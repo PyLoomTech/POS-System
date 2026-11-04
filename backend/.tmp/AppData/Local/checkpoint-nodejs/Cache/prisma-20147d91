@@ -1,0 +1,53 @@
+{
+  "last_reminder": 1793467974337,
+  "cached_at": 1793467951870,
+  "version": "7.10.1",
+  "cli_path": "D:\\Pyloom POS System\\backend\\node_modules\\prisma\\build\\index.js",
+  "output": {
+    "product": "prisma",
+    "previous_version": "7.10.1",
+    "checkpoint_version": 4,
+    "local_timestamp_without_timezone": "2026-10-31T23:17:29Z",
+    "current_version": "8.0.0-rc.29",
+    "current_release_date": 1793357896,
+    "client_event_id": "d6286d13-417b-4070-8594-99c698a2d519",
+    "current_download_url": "https://github.com/prisma/prisma",
+    "package": "prisma",
+    "release_tag": "latest",
+    "install_command": "npm install --save-dev prisma",
+    "schema_providers": [
+      "postgresql"
+    ],
+    "schema_preview_features": [],
+    "schema_generators_providers": [
+      "prisma-client-js"
+    ],
+    "current_changelog_url": "https://github.com/prisma/prisma",
+    "outdated": true,
+    "project_website": "https://prisma.io",
+    "alerts": []
+  },
+  "product": "prisma",
+  "cli_install_type": "local",
+  "local_timestamp": "2026-10-31T23:18:57+05:45",
+  "project_hash": "cf56b01a",
+  "cli_path_hash": "20147d91",
+  "endpoint": "https://checkpoint.prisma.io",
+  "arch": "x64",
+  "os": "win32",
+  "node_version": "v24.11.0",
+  "command": "db seed",
+  "schema_providers": [
+    "postgresql"
+  ],
+  "schema_preview_features": [],
+  "schema_generators_providers": [
+    "prisma-client-js"
+  ],
+  "cache_file": "D:\\Pyloom POS System\\backend\\.tmp\\AppData\\Local\\checkpoint-nodejs\\Cache\\prisma-20147d91",
+  "cache_duration": 43200000,
+  "remind_duration": 172800000,
+  "timeout": 5000,
+  "unref": true,
+  "child_path": "D:\\Pyloom POS System\\backend\\node_modules\\prisma\\build\\child"
+}

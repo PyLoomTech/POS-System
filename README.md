@@ -65,6 +65,14 @@ D:\Pyloom POS System\
 - **Backend Port:** 3000
 - **Database Port:** 5432
 
+## Reports
+
+The Reports page includes date-filtered sales summaries and breakdowns by item, category,
+customer, and cashier; supplier purchase totals and returns; Profit & Loss and VAT reports;
+and inventory movement history. Stock valuation and low-stock reports cover current
+inventory, while receivables, payables, and the Day Book support daily accounting review.
+Inventory movement history shows the latest 500 records within the selected date range.
+
 ## Development Phases
 
 | Phase | Description              | Status     |

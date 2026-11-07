@@ -81,6 +81,137 @@ export async function getSalesByCategory(req: Request, res: Response, next: Next
   } catch (err) { return next(err); }
 }
 
+export async function getSalesByCustomer(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { from, to } = parseRange(req.query);
+    const rows = await prisma.$queryRaw<any[]>`
+      SELECT c.id AS "customerId", c.customer_code AS "customerCode", c.name, c.phone,
+             COUNT(si.id)::int AS "invoiceCount",
+             SUM(si.grand_total)::float AS revenue,
+             SUM(si.paid_amount)::float AS "paidAmount",
+             SUM(si.outstanding_amount)::float AS outstanding
+      FROM sales_invoices si
+      JOIN customers c ON c.id = si.customer_id
+      WHERE si.status = 'confirmed' AND si.invoice_date >= ${from} AND si.invoice_date <= ${to}
+      GROUP BY c.id, c.customer_code, c.name, c.phone
+      ORDER BY revenue DESC
+    `;
+    return res.json({ from, to, data: rows });
+  } catch (err) { return next(err); }
+}
+
+export async function getSalesByCashier(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { from, to } = parseRange(req.query);
+    const rows = await prisma.$queryRaw<any[]>`
+      SELECT si.cashier_id AS "cashierId", COALESCE(u.full_name, 'Unassigned') AS cashier,
+             COUNT(si.id)::int AS "invoiceCount",
+             SUM(si.grand_total)::float AS revenue,
+             SUM(si.paid_amount)::float AS "paidAmount"
+      FROM sales_invoices si
+      LEFT JOIN users u ON u.id = si.cashier_id
+      WHERE si.status = 'confirmed' AND si.invoice_date >= ${from} AND si.invoice_date <= ${to}
+      GROUP BY si.cashier_id, u.full_name
+      ORDER BY revenue DESC
+    `;
+    return res.json({ from, to, data: rows });
+  } catch (err) { return next(err); }
+}
+
+export async function getPurchaseSummary(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { from, to } = parseRange(req.query);
+    const [purchases, returns, suppliers] = await Promise.all([
+      prisma.purchaseInvoice.aggregate({
+        where: { invoiceDate: { gte: from, lte: to }, status: 'confirmed' },
+        _sum: {
+          subtotal: true,
+          discountAmount: true,
+          taxAmount: true,
+          grandTotal: true,
+          paidAmount: true,
+          outstandingAmount: true,
+        },
+        _count: { id: true },
+      }),
+      prisma.purchaseReturn.aggregate({
+        where: { returnDate: { gte: from, lte: to }, status: 'completed' },
+        _sum: { totalAmount: true },
+        _count: { id: true },
+      }),
+      prisma.$queryRaw<any[]>`
+        SELECT s.id AS "supplierId", s.supplier_code AS "supplierCode", s.name,
+               COUNT(pi.id)::int AS "invoiceCount",
+               SUM(pi.grand_total)::float AS purchases,
+               SUM(pi.paid_amount)::float AS "paidAmount",
+               SUM(pi.outstanding_amount)::float AS outstanding
+        FROM purchase_invoices pi
+        JOIN suppliers s ON s.id = pi.supplier_id
+        WHERE pi.status = 'confirmed' AND pi.invoice_date >= ${from} AND pi.invoice_date <= ${to}
+        GROUP BY s.id, s.supplier_code, s.name
+        ORDER BY purchases DESC
+      `,
+    ]);
+
+    const totalPurchases = Number(purchases._sum.grandTotal || 0);
+    const returnAmount = Number(returns._sum.totalAmount || 0);
+    return res.json({
+      from,
+      to,
+      invoiceCount: purchases._count.id,
+      subtotal: purchases._sum.subtotal || 0,
+      discount: purchases._sum.discountAmount || 0,
+      taxAmount: purchases._sum.taxAmount || 0,
+      totalPurchases,
+      paidAmount: purchases._sum.paidAmount || 0,
+      outstandingAmount: purchases._sum.outstandingAmount || 0,
+      returnCount: returns._count.id,
+      returnAmount,
+      netPurchases: totalPurchases - returnAmount,
+      suppliers,
+    });
+  } catch (err) { return next(err); }
+}
+
+export async function getLowStock(req: Request, res: Response, next: NextFunction) {
+  try {
+    const rows = await prisma.$queryRaw<any[]>`
+      SELECT i.id AS "itemId", i.item_code AS "itemCode", i.name,
+             COALESCE(SUM(sb.quantity), 0)::float AS quantity,
+             i.reorder_level::float AS "reorderLevel",
+             GREATEST(i.reorder_level - COALESCE(SUM(sb.quantity), 0), 0)::float AS "suggestedOrder",
+             COALESCE(SUM(sb.quantity * sb.average_cost), 0)::float AS value
+      FROM items i
+      LEFT JOIN stock_balances sb ON sb.item_id = i.id
+      WHERE i.is_active = true
+      GROUP BY i.id, i.item_code, i.name, i.reorder_level
+      HAVING COALESCE(SUM(sb.quantity), 0) <= i.reorder_level
+      ORDER BY "suggestedOrder" DESC, i.name
+    `;
+    return res.json({ data: rows, itemCount: rows.length });
+  } catch (err) { return next(err); }
+}
+
+export async function getInventoryMovements(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { from, to } = parseRange(req.query);
+    const rows = await prisma.$queryRaw<any[]>`
+      SELECT im.id::text AS id, im.created_at AS "createdAt",
+             im.movement_type AS "movementType", im.quantity::float AS quantity,
+             im.unit_cost::float AS "unitCost", im.reference_type AS "referenceType",
+             im.narration, i.item_code AS "itemCode", i.name AS item,
+             w.name AS warehouse
+      FROM inventory_movements im
+      JOIN items i ON i.id = im.item_id
+      JOIN warehouses w ON w.id = im.warehouse_id
+      WHERE im.created_at >= ${from} AND im.created_at <= ${to}
+      ORDER BY im.created_at DESC, im.id DESC
+      LIMIT 500
+    `;
+    return res.json({ from, to, data: rows, limit: 500 });
+  } catch (err) { return next(err); }
+}
+
 export async function getProfitAndLoss(req: Request, res: Response, next: NextFunction) {
   try {
     const { from, to } = parseRange(req.query);

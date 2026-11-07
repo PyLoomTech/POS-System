@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import {
+  Activity,
+  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   BarChart3,
@@ -9,7 +11,10 @@ import {
   FolderTree,
   Package,
   Percent,
+  ShoppingCart,
   TrendingUp,
+  UserRound,
+  UsersRound,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardHeader, StatCard } from '@/components/ui/Card'
@@ -19,7 +24,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Field, Input } from '@/components/ui/Input'
 import { EmptyState, ErrorState, Spinner } from '@/components/ui/Feedback'
 import { useFetch } from '@/hooks/useFetch'
-import { cn, formatCurrency, formatDate, formatNumber, toNumber } from '@/lib/utils'
+import { cn, formatCurrency, formatDate, formatDateTime, formatNumber, toNumber } from '@/lib/utils'
 
 // ---------------------------------------------------------------
 // Types (mirrors of the backend controller response shapes)
@@ -57,6 +62,74 @@ interface SalesByCategoryRow {
   category: string
   quantity: Money
   revenue: Money
+}
+
+interface SalesByCustomerRow {
+  customerId: number
+  customerCode: string
+  name: string
+  phone: string | null
+  invoiceCount: number
+  revenue: Money
+  paidAmount: Money
+  outstanding: Money
+}
+
+interface SalesByCashierRow {
+  cashierId: number | null
+  cashier: string
+  invoiceCount: number
+  revenue: Money
+  paidAmount: Money
+}
+
+interface PurchaseSupplierRow {
+  supplierId: number
+  supplierCode: string
+  name: string
+  invoiceCount: number
+  purchases: Money
+  paidAmount: Money
+  outstanding: Money
+}
+
+interface PurchaseSummaryData {
+  from: string
+  to: string
+  invoiceCount: number
+  subtotal: Money
+  discount: Money
+  taxAmount: Money
+  totalPurchases: Money
+  paidAmount: Money
+  outstandingAmount: Money
+  returnCount: number
+  returnAmount: Money
+  netPurchases: Money
+  suppliers: PurchaseSupplierRow[]
+}
+
+interface LowStockRow {
+  itemId: number
+  itemCode: string
+  name: string
+  quantity: Money
+  reorderLevel: Money
+  suggestedOrder: Money
+  value: Money
+}
+
+interface InventoryMovementRow {
+  id: string
+  createdAt: string
+  movementType: string
+  quantity: Money
+  unitCost: Money | null
+  referenceType: string | null
+  narration: string | null
+  itemCode: string
+  item: string
+  warehouse: string
 }
 
 interface AccountLine {
@@ -183,9 +256,14 @@ type TabKey =
   | 'summary'
   | 'by-item'
   | 'by-category'
+  | 'by-customer'
+  | 'by-cashier'
+  | 'purchases'
   | 'pl'
   | 'vat'
   | 'stock'
+  | 'low-stock'
+  | 'movements'
   | 'receivables'
   | 'payables'
   | 'daybook'
@@ -194,9 +272,14 @@ const TABS: { key: TabKey; label: string; icon: ReactNode }[] = [
   { key: 'summary', label: 'Sales Summary', icon: <BarChart3 size={15} /> },
   { key: 'by-item', label: 'Sales by Item', icon: <Package size={15} /> },
   { key: 'by-category', label: 'Sales by Category', icon: <FolderTree size={15} /> },
+  { key: 'by-customer', label: 'Sales by Customer', icon: <UsersRound size={15} /> },
+  { key: 'by-cashier', label: 'Sales by Cashier', icon: <UserRound size={15} /> },
+  { key: 'purchases', label: 'Purchases', icon: <ShoppingCart size={15} /> },
   { key: 'pl', label: 'Profit & Loss', icon: <TrendingUp size={15} /> },
   { key: 'vat', label: 'VAT Report', icon: <Percent size={15} /> },
   { key: 'stock', label: 'Stock Valuation', icon: <Boxes size={15} /> },
+  { key: 'low-stock', label: 'Low Stock', icon: <AlertTriangle size={15} /> },
+  { key: 'movements', label: 'Stock Movements', icon: <Activity size={15} /> },
   { key: 'receivables', label: 'Receivables', icon: <ArrowDownLeft size={15} /> },
   { key: 'payables', label: 'Payables', icon: <ArrowUpRight size={15} /> },
   { key: 'daybook', label: 'Day Book', icon: <CalendarDays size={15} /> },
@@ -407,6 +490,187 @@ function SalesByCategoryTab({ range }: { range: string }) {
         {(d) => <DataTable columns={columns} rows={d.data} rowKey={(row) => row.categoryId} />}
       </ReportSection>
     </Card>
+  )
+}
+
+function SalesByCustomerTab({ range }: { range: string }) {
+  const columns: Column<SalesByCustomerRow>[] = [
+    {
+      header: 'Code',
+      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.customerCode}</span>,
+    },
+    {
+      header: 'Customer',
+      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+    },
+    { header: 'Phone', cell: (row) => row.phone ?? '—' },
+    {
+      header: 'Invoices',
+      align: 'right',
+      cell: (row) => formatNumber(row.invoiceCount),
+    },
+    {
+      header: 'Sales',
+      align: 'right',
+      cell: (row) => <span className="font-semibold">{formatCurrency(row.revenue)}</span>,
+    },
+    {
+      header: 'Collected',
+      align: 'right',
+      cell: (row) => formatCurrency(row.paidAmount),
+    },
+    {
+      header: 'Outstanding',
+      align: 'right',
+      cell: (row) => (
+        <span className={toNumber(row.outstanding) > 0 ? 'text-red-600' : 'text-slate-400'}>
+          {formatCurrency(row.outstanding)}
+        </span>
+      ),
+    },
+  ]
+
+  return (
+    <Card>
+      <CardHeader title="Sales by Customer" subtitle="Confirmed sales grouped by customer" />
+      <ReportSection<{ data: SalesByCustomerRow[] }>
+        url={`/reports/sales-by-customer?${range}`}
+        emptyTitle="No customer sales"
+        emptyDescription="No confirmed sales were recorded for the selected period."
+        isEmpty={(data) => data.data.length === 0}
+      >
+        {(data) => <DataTable columns={columns} rows={data.data} rowKey={(row) => row.customerId} />}
+      </ReportSection>
+    </Card>
+  )
+}
+
+function SalesByCashierTab({ range }: { range: string }) {
+  const columns: Column<SalesByCashierRow>[] = [
+    {
+      header: 'Cashier',
+      cell: (row) => <span className="font-medium text-slate-800">{row.cashier}</span>,
+    },
+    {
+      header: 'Invoices',
+      align: 'right',
+      cell: (row) => formatNumber(row.invoiceCount),
+    },
+    {
+      header: 'Sales',
+      align: 'right',
+      cell: (row) => <span className="font-semibold">{formatCurrency(row.revenue)}</span>,
+    },
+    {
+      header: 'Collected',
+      align: 'right',
+      cell: (row) => formatCurrency(row.paidAmount),
+    },
+  ]
+
+  return (
+    <Card>
+      <CardHeader title="Sales by Cashier" subtitle="Confirmed invoices grouped by cashier" />
+      <ReportSection<{ data: SalesByCashierRow[] }>
+        url={`/reports/sales-by-cashier?${range}`}
+        emptyTitle="No cashier sales"
+        emptyDescription="No confirmed sales were recorded for the selected period."
+        isEmpty={(data) => data.data.length === 0}
+      >
+        {(data) => (
+          <DataTable
+            columns={columns}
+            rows={data.data}
+            rowKey={(row) => row.cashierId ?? 'unassigned'}
+          />
+        )}
+      </ReportSection>
+    </Card>
+  )
+}
+
+function PurchaseSummaryTab({ range }: { range: string }) {
+  const columns: Column<PurchaseSupplierRow>[] = [
+    {
+      header: 'Code',
+      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.supplierCode}</span>,
+    },
+    {
+      header: 'Supplier',
+      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+    },
+    {
+      header: 'Invoices',
+      align: 'right',
+      cell: (row) => formatNumber(row.invoiceCount),
+    },
+    {
+      header: 'Purchases',
+      align: 'right',
+      cell: (row) => <span className="font-semibold">{formatCurrency(row.purchases)}</span>,
+    },
+    {
+      header: 'Paid',
+      align: 'right',
+      cell: (row) => formatCurrency(row.paidAmount),
+    },
+    {
+      header: 'Outstanding',
+      align: 'right',
+      cell: (row) => (
+        <span className={toNumber(row.outstanding) > 0 ? 'text-amber-600' : 'text-slate-400'}>
+          {formatCurrency(row.outstanding)}
+        </span>
+      ),
+    },
+  ]
+
+  return (
+    <ReportSection<PurchaseSummaryData>
+      url={`/reports/purchase-summary?${range}`}
+      emptyTitle="No purchases"
+      emptyDescription="No confirmed purchases were recorded for the selected period."
+      isEmpty={(data) => data.invoiceCount === 0 && data.returnCount === 0}
+    >
+      {(data) => (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Purchases"
+              value={formatCurrency(data.totalPurchases)}
+              hint={`${data.invoiceCount} confirmed invoice(s)`}
+              icon={<ShoppingCart size={18} />}
+              tone="indigo"
+            />
+            <StatCard
+              label="Net Purchases"
+              value={formatCurrency(data.netPurchases)}
+              hint="After purchase returns"
+              icon={<TrendingUp size={18} />}
+              tone="emerald"
+            />
+            <StatCard
+              label="Returns"
+              value={formatCurrency(data.returnAmount)}
+              hint={`${data.returnCount} completed return(s)`}
+              icon={<ArrowUpRight size={18} />}
+              tone="amber"
+            />
+            <StatCard
+              label="Outstanding"
+              value={formatCurrency(data.outstandingAmount)}
+              hint="Still due to suppliers"
+              icon={<ArrowDownLeft size={18} />}
+              tone="red"
+            />
+          </div>
+          <Card>
+            <CardHeader title="Purchases by Supplier" subtitle={periodLabel(data.from, data.to)} />
+            <DataTable columns={columns} rows={data.suppliers} rowKey={(row) => row.supplierId} />
+          </Card>
+        </div>
+      )}
+    </ReportSection>
   )
 }
 
@@ -636,6 +900,134 @@ function StockValuationTab() {
         </>
       )}
     </ReportSection>
+  )
+}
+
+function LowStockTab() {
+  const columns: Column<LowStockRow>[] = [
+    {
+      header: 'Code',
+      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.itemCode}</span>,
+    },
+    {
+      header: 'Item',
+      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+    },
+    {
+      header: 'On Hand',
+      align: 'right',
+      cell: (row) => (
+        <span className={toNumber(row.quantity) <= 0 ? 'font-semibold text-red-600' : 'text-amber-600'}>
+          {formatNumber(row.quantity, 2)}
+        </span>
+      ),
+    },
+    {
+      header: 'Reorder At',
+      align: 'right',
+      cell: (row) => formatNumber(row.reorderLevel, 2),
+    },
+    {
+      header: 'Suggested Order',
+      align: 'right',
+      cell: (row) => <span className="font-semibold">{formatNumber(row.suggestedOrder, 2)}</span>,
+    },
+    {
+      header: 'Stock Value',
+      align: 'right',
+      cell: (row) => formatCurrency(row.value),
+    },
+  ]
+
+  return (
+    <Card>
+      <CardHeader
+        title="Low Stock"
+        subtitle="Active items at or below reorder level; quantities are combined across warehouses"
+      />
+      <ReportSection<{ data: LowStockRow[]; itemCount: number }>
+        url="/reports/low-stock"
+        emptyTitle="Stock levels look good"
+        emptyDescription="No active items are at or below their reorder level."
+        isEmpty={(data) => data.data.length === 0}
+      >
+        {(data) => <DataTable columns={columns} rows={data.data} rowKey={(row) => row.itemId} />}
+      </ReportSection>
+    </Card>
+  )
+}
+
+function InventoryMovementsTab({ range }: { range: string }) {
+  const columns: Column<InventoryMovementRow>[] = [
+    {
+      header: 'Date',
+      cell: (row) => formatDateTime(row.createdAt),
+    },
+    {
+      header: 'Movement',
+      cell: (row) => (
+        <Badge tone={toNumber(row.quantity) < 0 ? 'red' : 'green'}>
+          {row.movementType.replace('_', ' ')}
+        </Badge>
+      ),
+    },
+    {
+      header: 'Item',
+      cell: (row) => (
+        <span className="font-medium text-slate-800">
+          {row.item} <span className="font-mono text-xs text-slate-400">({row.itemCode})</span>
+        </span>
+      ),
+    },
+    { header: 'Warehouse', cell: (row) => row.warehouse },
+    {
+      header: 'Quantity',
+      align: 'right',
+      cell: (row) => (
+        <span
+          className={
+            toNumber(row.quantity) < 0
+              ? 'font-semibold text-red-600'
+              : 'font-semibold text-emerald-600'
+          }
+        >
+          {formatNumber(row.quantity, 2)}
+        </span>
+      ),
+    },
+    {
+      header: 'Unit Cost',
+      align: 'right',
+      cell: (row) => (row.unitCost == null ? '—' : formatCurrency(row.unitCost)),
+    },
+    {
+      header: 'Reference',
+      cell: (row) => row.narration ?? row.referenceType ?? '—',
+    },
+  ]
+
+  return (
+    <Card>
+      <CardHeader
+        title="Stock Movements"
+        subtitle="Inventory receipts, sales, returns, and adjustments"
+      />
+      <ReportSection<{ data: InventoryMovementRow[]; limit: number }>
+        url={`/reports/inventory-movements?${range}`}
+        emptyTitle="No stock movements"
+        emptyDescription="No inventory movements were recorded for the selected period."
+        isEmpty={(data) => data.data.length === 0}
+      >
+        {(data) => (
+          <>
+            <p className="px-5 py-3 text-xs text-slate-500">
+              Showing up to the latest {formatNumber(data.limit)} movements in this date range.
+            </p>
+            <DataTable columns={columns} rows={data.data} rowKey={(row) => row.id} />
+          </>
+        )}
+      </ReportSection>
+    </Card>
   )
 }
 
@@ -934,6 +1326,7 @@ export function ReportsPage() {
   const [appliedDay, setAppliedDay] = useState(defaultTo)
 
   const range = `from=${applied.from}&to=${applied.to}`
+  const usesDateRange = !['stock', 'low-stock', 'receivables', 'payables'].includes(tab)
 
   function clearFilters() {
     setFrom(defaultFrom)
@@ -943,46 +1336,48 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          {tab === 'daybook' ? (
-            <>
-              <Field label="Date" className="w-48">
-                <Input type="date" value={day} onChange={(event) => setDay(event.target.value)} />
-              </Field>
-              <Button onClick={() => setAppliedDay(day)}>Apply</Button>
-              <Button variant="outline" onClick={() => setAppliedDay(defaultTo)}>
-                Today
-              </Button>
-            </>
-          ) : (
-            <>
-              <Field label="From" className="w-48">
-                <Input
-                  type="date"
-                  value={from}
-                  max={to || undefined}
-                  onChange={(event) => setFrom(event.target.value)}
-                />
-              </Field>
-              <Field label="To" className="w-48">
-                <Input
-                  type="date"
-                  value={to}
-                  min={from || undefined}
-                  onChange={(event) => setTo(event.target.value)}
-                />
-              </Field>
-              <Button onClick={() => setApplied({ from: from || defaultFrom, to: to || defaultTo })}>
-                Apply
-              </Button>
-              <Button variant="outline" onClick={clearFilters}>
-                Clear
-              </Button>
-            </>
-          )}
-        </div>
-      </Card>
+      {usesDateRange && (
+        <Card className="p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            {tab === 'daybook' ? (
+              <>
+                <Field label="Date" className="w-48">
+                  <Input type="date" value={day} onChange={(event) => setDay(event.target.value)} />
+                </Field>
+                <Button onClick={() => setAppliedDay(day)}>Apply</Button>
+                <Button variant="outline" onClick={() => setAppliedDay(defaultTo)}>
+                  Today
+                </Button>
+              </>
+            ) : (
+              <>
+                <Field label="From" className="w-48">
+                  <Input
+                    type="date"
+                    value={from}
+                    max={to || undefined}
+                    onChange={(event) => setFrom(event.target.value)}
+                  />
+                </Field>
+                <Field label="To" className="w-48">
+                  <Input
+                    type="date"
+                    value={to}
+                    min={from || undefined}
+                    onChange={(event) => setTo(event.target.value)}
+                  />
+                </Field>
+                <Button onClick={() => setApplied({ from: from || defaultFrom, to: to || defaultTo })}>
+                  Apply
+                </Button>
+                <Button variant="outline" onClick={clearFilters}>
+                  Clear
+                </Button>
+              </>
+            )}
+          </div>
+        </Card>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {TABS.map((item) => (
@@ -1006,9 +1401,14 @@ export function ReportsPage() {
       {tab === 'summary' && <SalesSummaryTab range={range} />}
       {tab === 'by-item' && <SalesByItemTab range={range} />}
       {tab === 'by-category' && <SalesByCategoryTab range={range} />}
+      {tab === 'by-customer' && <SalesByCustomerTab range={range} />}
+      {tab === 'by-cashier' && <SalesByCashierTab range={range} />}
+      {tab === 'purchases' && <PurchaseSummaryTab range={range} />}
       {tab === 'pl' && <ProfitLossTab range={range} />}
       {tab === 'vat' && <VatReportTab range={range} />}
       {tab === 'stock' && <StockValuationTab />}
+      {tab === 'low-stock' && <LowStockTab />}
+      {tab === 'movements' && <InventoryMovementsTab range={range} />}
       {tab === 'receivables' && <ReceivablesTab />}
       {tab === 'payables' && <PayablesTab />}
       {tab === 'daybook' && <DayBookTab date={appliedDay} />}

@@ -35,6 +35,7 @@ import type {
   Customer,
   Item,
   Paginated,
+  PriceList,
   SalesInvoiceDetail,
   TaxRate,
   WalkinCustomer,
@@ -44,6 +45,12 @@ interface CartLine {
   itemId: number
   name: string
   itemCode: string
+  unitId: number
+  unitLabel: string
+  conversionFactor: number
+  baseSellingPrice: number
+  priceListPrices: Item['priceListPrices']
+  units: Array<{ id: number; name: string; abbreviation: string | null; factor: number }>
   unitPrice: number
   quantity: number
   discountPct: number
@@ -89,6 +96,26 @@ function imageSrc(value: string | null | undefined): string {
 
 function stockOf(item: Item): number {
   return item.stockBalances.reduce((sum, balance) => sum + toNumber(balance.quantity), 0)
+}
+
+function unitChoices(item: Item) {
+  return [
+    ...(item.unit ? [{
+      id: item.unit.id,
+      name: item.unit.name,
+      abbreviation: item.unit.abbreviation,
+      factor: 1,
+    }] : []),
+    ...(item.unitConversions ?? []).map((conversion) => ({
+      ...conversion.unit,
+      factor: toNumber(conversion.factor),
+    })),
+  ]
+}
+
+function itemUnitFactor(item: Item, unitId: number | null | undefined): number {
+  if (!unitId || unitId === item.unit?.id) return 1
+  return toNumber(item.unitConversions?.find((conversion) => conversion.unitId === unitId)?.factor)
 }
 
 function computeLine(line: CartLine) {
@@ -137,6 +164,7 @@ export function PosPage() {
   const [receipt, setReceipt] = useState<SalesInvoiceDetail | null>(null)
 
   const { data: taxRates } = useFetch<TaxRate[]>('/items/tax-rates')
+  const { data: priceLists } = useFetch<PriceList[]>('/items/price-lists')
   const { data: walkin } = useFetch<WalkinCustomer>('/customers/walk-in')
   const { data: customers, reload: reloadCustomers } = useFetch<Paginated<Customer>>(
     '/customers?limit=100',
@@ -147,10 +175,56 @@ export function PosPage() {
   const [customerForm, setCustomerForm] = useState<CustomerForm>(EMPTY_CUSTOMER)
   const [customerSaving, setCustomerSaving] = useState(false)
   const [customerError, setCustomerError] = useState<string | null>(null)
+  const [selectedPriceListId, setSelectedPriceListId] = useState('')
 
   useEffect(() => {
     if (walkin && !customerId) setCustomerId(String(walkin.id))
   }, [walkin, customerId])
+
+  useEffect(() => {
+    const defaultList = priceLists?.find((list) => list.isDefault) ?? priceLists?.[0]
+    if (defaultList && !selectedPriceListId) {
+      setSelectedPriceListId(String(defaultList.id))
+    }
+  }, [priceLists, selectedPriceListId])
+
+  function resolveItemPrice(item: Item, listId: string | number | null, unitId = item.unit?.id): number {
+    const listPrice = listId
+      ? item.priceListPrices?.find((entry) => Number(entry.priceListId) === Number(listId))
+      : undefined
+    const price = listPrice ? Number(listPrice.price) : toNumber(item.sellingPrice)
+    const priceUnitId = listPrice?.unitId ?? item.unit?.id
+    const priceFactor = itemUnitFactor(item, priceUnitId)
+    const unitFactor = itemUnitFactor(item, unitId)
+    return priceFactor > 0 ? (price / priceFactor) * unitFactor : price * unitFactor
+  }
+
+  function resolveLinePrice(line: CartLine, listId: string | number | null): number {
+    const listPrice = listId
+      ? line.priceListPrices?.find((entry) => Number(entry.priceListId) === Number(listId))
+      : undefined
+    const sourceUnitId = listPrice?.unitId ?? line.units[0]?.id
+    const sourceFactor = line.units.find((unit) => unit.id === sourceUnitId)?.factor ?? 1
+    return (listPrice ? Number(listPrice.price) : line.baseSellingPrice) / sourceFactor * line.conversionFactor
+  }
+
+  useEffect(() => {
+    if (!selectedPriceListId) return
+    setLines((prev) => prev.map((line) => {
+      const listPrice = line.priceListPrices?.find(
+        (entry) => Number(entry.priceListId) === Number(selectedPriceListId),
+      )
+      const unitId = listPrice?.unitId ?? line.units[0]?.id ?? line.unitId
+      const selectedUnit = line.units.find((unit) => unit.id === unitId)
+      const updatedLine = {
+        ...line,
+        unitId,
+        unitLabel: selectedUnit?.abbreviation || selectedUnit?.name || line.unitLabel,
+        conversionFactor: selectedUnit?.factor ?? 1,
+      }
+      return { ...updatedLine, unitPrice: resolveLinePrice(updatedLine, selectedPriceListId) }
+    }))
+  }, [selectedPriceListId])
 
   useEffect(() => {
     let cancelled = false
@@ -192,6 +266,12 @@ export function PosPage() {
 
   function addItem(item: Item) {
     const { taxRate, taxRateId } = resolveTax(item, taxRates)
+    const units = unitChoices(item)
+    const listPrice = item.priceListPrices?.find(
+      (entry) => Number(entry.priceListId) === Number(selectedPriceListId),
+    )
+    const unitId = listPrice?.unitId ?? item.unit?.id ?? 0
+    const selectedUnit = units.find((unit) => unit.id === unitId)
     setNotice(null)
     setLines((prev) => {
       const existing = prev.find((line) => line.itemId === item.id)
@@ -206,7 +286,13 @@ export function PosPage() {
           itemId: item.id,
           name: item.name,
           itemCode: item.itemCode,
-          unitPrice: toNumber(item.sellingPrice),
+          unitId,
+          unitLabel: selectedUnit?.abbreviation || selectedUnit?.name || '',
+          conversionFactor: selectedUnit?.factor ?? 1,
+          baseSellingPrice: toNumber(item.sellingPrice),
+          priceListPrices: item.priceListPrices,
+          units,
+          unitPrice: resolveItemPrice(item, selectedPriceListId, unitId),
           quantity: 1,
           discountPct: 0,
           taxType: item.taxType,
@@ -346,6 +432,7 @@ export function PosPage() {
         idempotencyKey: crypto.randomUUID(),
         items: lines.map((line) => ({
           itemId: line.itemId,
+          unitId: line.unitId || undefined,
           quantity: line.quantity,
           unitPrice: line.unitPrice,
           discountPct: line.discountPct,
@@ -388,7 +475,7 @@ export function PosPage() {
             <div className="relative flex-1">
               <Search
                 size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
               />
               <Input
                 className="pl-9"
@@ -397,11 +484,25 @@ export function PosPage() {
                 onChange={(event) => setSearch(event.target.value)}
               />
             </div>
+            <div className="min-w-[220px]">
+              <Select
+                value={selectedPriceListId}
+                onChange={(event) => setSelectedPriceListId(event.target.value)}
+                disabled={!priceLists || priceLists.length === 0}
+                aria-label="Price list"
+              >
+                {(priceLists ?? []).map((list) => (
+                  <option key={list.id} value={list.id}>
+                    {list.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
             <form className="flex gap-2" onSubmit={onScan}>
               <div className="relative">
                 <Barcode
                   size={16}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
                 />
                 <Input
                   className="w-52 pl-9"
@@ -415,7 +516,7 @@ export function PosPage() {
               </Button>
             </form>
           </div>
-          {notice && <p className="mt-2 text-xs text-amber-600">{notice}</p>}
+          {notice && <p className="mt-2 text-xs text-brand-amber">{notice}</p>}
         </Card>
 
         {loadingItems ? (
@@ -424,8 +525,8 @@ export function PosPage() {
           </Card>
         ) : catalogue.length === 0 ? (
           <Card className="py-16 text-center">
-            <p className="text-sm font-medium text-slate-700">No items found</p>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="text-sm font-medium text-ink">No items found</p>
+            <p className="mt-1 text-xs text-ink-2">
               Add products under Items, then come back to bill them.
             </p>
           </Card>
@@ -433,14 +534,21 @@ export function PosPage() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-4">
             {catalogue.map((item) => {
               const stock = stockOf(item)
+              const units = unitChoices(item)
+              const listPrice = item.priceListPrices?.find(
+                (entry) => Number(entry.priceListId) === Number(selectedPriceListId),
+              )
+              const unitId = listPrice?.unitId ?? item.unit?.id
+              const unit = units.find((option) => option.id === unitId)
+              const price = resolveItemPrice(item, selectedPriceListId, unitId)
               return (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => addItem(item)}
-                  className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
                 >
-                  <div className="flex h-28 items-center justify-center bg-slate-50">
+                  <div className="flex h-28 items-center justify-center bg-line-2">
                     {item.imageUrl ? (
                       <img
                         src={imageSrc(item.imageUrl)}
@@ -448,15 +556,15 @@ export function PosPage() {
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      <ImagePlus size={22} className="text-slate-300" />
+                      <ImagePlus size={22} className="text-ink-3" />
                     )}
                   </div>
                   <div className="flex flex-1 flex-col gap-1 p-3">
-                    <p className="line-clamp-2 text-sm font-medium text-slate-800">{item.name}</p>
-                    <p className="font-mono text-[11px] text-slate-400">{item.itemCode}</p>
+                    <p className="line-clamp-2 text-sm font-medium text-ink">{item.name}</p>
+                    <p className="font-mono text-[11px] text-ink-3">{item.itemCode}</p>
                     <div className="mt-auto flex items-center justify-between pt-1">
-                      <span className="text-sm font-semibold text-blue-600">
-                        {formatCurrency(item.sellingPrice)}
+                      <span className="text-sm font-semibold text-accent">
+                        {formatCurrency(price)}{unit?.abbreviation ? ` / ${unit.abbreviation}` : ''}
                       </span>
                       <Badge tone={stock > 0 ? 'green' : 'red'}>
                         {stock > 0 ? formatNumber(stock, 0) : '0'}
@@ -472,16 +580,16 @@ export function PosPage() {
 
       {/* ── Cart ──────────────────────────────────────────── */}
       <Card className="flex h-fit flex-col lg:sticky lg:top-24">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-line-2 px-5 py-4">
           <div className="flex items-center gap-2">
-            <ShoppingCart size={17} className="text-blue-600" />
-            <h2 className="text-sm font-semibold text-slate-800">Current Bill</h2>
+            <ShoppingCart size={17} className="text-accent" />
+            <h2 className="text-sm font-semibold text-ink">Current Bill</h2>
           </div>
           {lines.length > 0 && (
             <button
               type="button"
               onClick={() => setLines([])}
-              className="text-xs font-medium text-slate-400 hover:text-red-600"
+              className="text-xs font-medium text-ink-3 hover:text-brand-crimson"
             >
               Clear
             </button>
@@ -516,27 +624,52 @@ export function PosPage() {
           </Field>
 
           {lines.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center">
-              <p className="text-sm text-slate-500">Cart is empty</p>
-              <p className="mt-1 text-xs text-slate-400">Click an item to start a bill.</p>
+            <div className="rounded-2xl border border-dashed border-line py-10 text-center">
+              <p className="text-sm text-ink-2">Cart is empty</p>
+              <p className="mt-1 text-xs text-ink-3">Click an item to start a bill.</p>
             </div>
           ) : (
             <ul className="max-h-72 space-y-2 overflow-y-auto pr-1">
               {lines.map((line) => {
                 const calc = computeLine(line)
+                const item = catalogue.find((entry) => entry.id === line.itemId)
+                const units = item ? unitChoices(item) : []
                 return (
-                  <li key={line.itemId} className="rounded-2xl border border-slate-200 p-3">
+                  <li key={line.itemId} className="rounded-2xl border border-line p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-800">{line.name}</p>
-                        <p className="text-[11px] text-slate-400">
-                          {formatCurrency(line.unitPrice)} · stock {formatNumber(line.stock, 0)}
+                        <p className="truncate text-sm font-medium text-ink">{line.name}</p>
+                        <p className="text-[11px] text-ink-3">
+                          {formatCurrency(line.unitPrice)} / {line.unitLabel} · stock {formatNumber(line.stock, 0)} {item?.unit?.abbreviation || item?.unit?.name}
                         </p>
+                        {item && units.length > 1 && (
+                          <Select
+                            className="mt-1 h-7 py-0 text-xs"
+                            value={line.unitId}
+                            aria-label={`Unit for ${line.name}`}
+                            onChange={(event) => {
+                              const selected = units.find((unit) => unit.id === Number(event.target.value))
+                              if (!selected) return
+                              patchLine(line.itemId, {
+                                unitId: selected.id,
+                                unitLabel: selected.abbreviation || selected.name,
+                                conversionFactor: selected.factor,
+                                unitPrice: resolveItemPrice(item, selectedPriceListId, selected.id),
+                              })
+                            }}
+                          >
+                            {units.map((unit) => (
+                              <option key={unit.id} value={unit.id}>
+                                {unit.name}{unit.factor !== 1 ? ` (${unit.factor} ${item.unit?.abbreviation || item.unit?.name})` : ''}
+                              </option>
+                            ))}
+                          </Select>
+                        )}
                       </div>
                       <button
                         type="button"
                         onClick={() => removeLine(line.itemId)}
-                        className="rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        className="rounded-lg p-1 text-ink-3 hover:bg-[#f9e4e7] hover:text-brand-crimson"
                         aria-label={`Remove ${line.name}`}
                       >
                         <Trash2 size={14} />
@@ -552,7 +685,7 @@ export function PosPage() {
                               ? patchLine(line.itemId, { quantity: line.quantity - 1 })
                               : removeLine(line.itemId)
                           }
-                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50"
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-ink-2 hover:bg-line-2"
                           aria-label="Decrease quantity"
                         >
                           <Minus size={13} />
@@ -567,12 +700,12 @@ export function PosPage() {
                               quantity: Math.max(toNumber(event.target.value), 0.01),
                             })
                           }
-                          className="h-7 w-14 rounded-lg border border-slate-300 px-2 text-center text-xs"
+                          className="h-7 w-14 rounded-lg border border-line px-2 text-center text-xs"
                         />
                         <button
                           type="button"
                           onClick={() => patchLine(line.itemId, { quantity: line.quantity + 1 })}
-                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50"
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-ink-2 hover:bg-line-2"
                           aria-label="Increase quantity"
                         >
                           <Plus size={13} />
@@ -590,12 +723,12 @@ export function PosPage() {
                               discountPct: Math.min(toNumber(event.target.value), 100),
                             })
                           }
-                          className="h-7 w-14 rounded-lg border border-slate-300 px-2 text-center text-xs"
+                          className="h-7 w-14 rounded-lg border border-line px-2 text-center text-xs"
                           aria-label="Line discount percent"
                         />
-                        <span className="text-xs text-slate-400">%</span>
+                        <span className="text-xs text-ink-3">%</span>
                       </div>
-                      <span className="w-20 text-right text-sm font-semibold text-slate-800">
+                      <span className="w-20 text-right text-sm font-semibold text-ink">
                         {formatCurrency(calc.lineTotal)}
                       </span>
                     </div>
@@ -606,9 +739,9 @@ export function PosPage() {
           )}
         </div>
 
-        <div className="space-y-3 border-t border-slate-100 px-5 py-4">
+        <div className="space-y-3 border-t border-line-2 px-5 py-4">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-slate-500">Invoice discount</span>
+            <span className="text-xs text-ink-2">Invoice discount</span>
             <input
               type="number"
               min="0"
@@ -616,50 +749,60 @@ export function PosPage() {
               value={invoiceDiscount}
               onChange={(event) => setInvoiceDiscount(event.target.value)}
               placeholder="0.00"
-              className="h-8 w-24 rounded-lg border border-slate-300 px-2 text-right text-xs"
+              className="h-8 w-24 rounded-lg border border-line px-2 text-right text-xs"
             />
           </div>
           <dl className="space-y-1.5 text-sm">
-            <div className="flex justify-between text-slate-500">
+            <div className="flex justify-between text-ink-2">
               <dt>Subtotal</dt>
               <dd>{formatCurrency(totals.subtotal)}</dd>
             </div>
             {totals.discountAmount > 0 && (
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-ink-2">
                 <dt>Discount</dt>
                 <dd>- {formatCurrency(totals.discountAmount)}</dd>
               </div>
             )}
-            <div className="flex justify-between text-slate-500">
+            <div className="flex justify-between text-ink-2">
               <dt>Taxable amount</dt>
               <dd>{formatCurrency(totals.taxable)}</dd>
             </div>
-            <div className="flex justify-between text-slate-500">
+            <div className="flex justify-between text-ink-2">
               <dt>VAT</dt>
               <dd>{formatCurrency(totals.tax)}</dd>
             </div>
-            <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold text-slate-900">
+            <div className="flex justify-between border-t border-line-2 pt-2 text-base font-semibold text-ink">
               <dt>Total</dt>
               <dd>{formatCurrency(totals.grandTotal)}</dd>
             </div>
           </dl>
 
           <Field label="Payment method">
-            <Select
-              value={method}
-              onChange={(event) => {
-                const next = event.target.value
-                setMethod(next)
-                // Pop the QR straight up for the customer to scan.
-                setQrOpen(next === 'qr' && lines.length > 0)
-              }}
-            >
-              {PAYMENT_METHODS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
+            <div className="grid grid-cols-2 gap-2" role="group" aria-label="Payment method">
+              {PAYMENT_METHODS.map((option) => {
+                const active = method === option.value
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => {
+                      setMethod(option.value)
+                      // Pop the QR straight up for the customer to scan.
+                      setQrOpen(option.value === 'qr' && lines.length > 0)
+                    }}
+                    className={cn(
+                      'rounded-xl border px-3 py-2 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+                      active
+                        ? 'border-accent bg-accent text-white shadow-sm'
+                        : 'border-line bg-white/70 text-ink-2 hover:bg-line-2 hover:text-ink',
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
           </Field>
 
           {method === 'qr' && (
@@ -676,7 +819,7 @@ export function PosPage() {
           {method === 'cash' && (
             <>
               <div className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                <span className="flex items-center gap-1.5 text-xs text-ink-2">
                   <Banknote size={14} /> Cash tendered
                 </span>
                 <input
@@ -686,24 +829,24 @@ export function PosPage() {
                   value={tendered}
                   onChange={(event) => setTendered(event.target.value)}
                   placeholder="0.00"
-                  className="h-8 w-24 rounded-lg border border-slate-300 px-2 text-right text-xs"
+                  className="h-8 w-24 rounded-lg border border-line px-2 text-right text-xs"
                 />
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Change</span>
-                <span className="font-medium text-emerald-600">{formatCurrency(change)}</span>
+                <span className="text-ink-2">Change</span>
+                <span className="font-medium text-brand-green">{formatCurrency(change)}</span>
               </div>
             </>
           )}
 
           {isCredit && (
-            <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            <p className="rounded-xl bg-[#f7efdd] px-3 py-2 text-xs text-brand-amber">
               This sale will be posted to the customer&apos;s account as outstanding credit.
             </p>
           )}
 
           {chargeError && (
-            <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{chargeError}</p>
+            <p className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">{chargeError}</p>
           )}
 
           <Button
@@ -736,7 +879,7 @@ export function PosPage() {
       >
         <form id="pos-customer-form" onSubmit={onCreateCustomer} className="space-y-4">
           {customerError && (
-            <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+            <div className="rounded-lg bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">
               {customerError}
             </div>
           )}
@@ -804,17 +947,17 @@ export function PosPage() {
         }
       >
         <div className="text-center">
-          <div className="mx-auto w-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mx-auto w-fit rounded-2xl border border-line bg-white p-4 shadow-sm">
             <QRCodeSVG value={qrPayload} size={240} level="M" />
           </div>
-          <p className="mt-4 text-2xl font-semibold text-slate-900">
+          <p className="mt-4 text-2xl font-semibold text-ink">
             {formatCurrency(totals.grandTotal)}
           </p>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-ink-2">
             {company?.companyName ?? 'Pyloom POS'} · Fonepay / QR
           </p>
-          <p className="mt-0.5 text-[11px] text-slate-400">{qrReference}</p>
-          <p className="mt-4 text-xs text-slate-400">
+          <p className="mt-0.5 text-[11px] text-ink-3">{qrReference}</p>
+          <p className="mt-4 text-xs text-ink-3">
             Ask the customer to scan this code, then press Charge.
           </p>
         </div>
@@ -837,33 +980,33 @@ export function PosPage() {
         }
       >
         {receipt && (
-          <div id="pos-receipt" className="text-slate-900">
-            <div className="border-b border-dashed border-slate-300 pb-3 text-center">
+          <div id="pos-receipt" className="text-ink">
+            <div className="border-b border-dashed border-line pb-3 text-center">
               <p className="text-base font-semibold">
                 {company?.companyName ?? 'Pyloom POS'}
               </p>
               {company?.addressLine1 && (
-                <p className="text-xs text-slate-500">{company.addressLine1}</p>
+                <p className="text-xs text-ink-2">{company.addressLine1}</p>
               )}
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-2">
                 {[company?.city, company?.phone].filter(Boolean).join(' · ')}
               </p>
               {company?.panVatNumber && (
-                <p className="text-xs text-slate-500">PAN/VAT: {company.panVatNumber}</p>
+                <p className="text-xs text-ink-2">PAN/VAT: {company.panVatNumber}</p>
               )}
             </div>
 
-            <div className="flex justify-between py-2 text-xs text-slate-500">
+            <div className="flex justify-between py-2 text-xs text-ink-2">
               <span>Invoice: {receipt.invoiceNumber}</span>
               <span>{formatDate(receipt.invoiceDate)}</span>
             </div>
-            <p className="pb-2 text-xs text-slate-500">
+            <p className="pb-2 text-xs text-ink-2">
               Customer: {receipt.customer?.name ?? 'Walk-in Customer'}
             </p>
 
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-y border-slate-200 text-slate-500">
+                <tr className="border-y border-line text-ink-2">
                   <th className="py-1.5 text-left font-medium">Item</th>
                   <th className="py-1.5 text-right font-medium">Qty</th>
                   <th className="py-1.5 text-right font-medium">Rate</th>
@@ -872,9 +1015,11 @@ export function PosPage() {
               </thead>
               <tbody>
                 {receipt.items.map((line) => (
-                  <tr key={line.id} className="border-b border-slate-100">
+                  <tr key={line.id} className="border-b border-line-2">
                     <td className="py-1.5">{line.item?.name ?? `Item #${line.itemId}`}</td>
-                    <td className="py-1.5 text-right">{formatNumber(line.quantity, 2)}</td>
+                    <td className="py-1.5 text-right">
+                      {formatNumber(line.quantity, 2)} {line.unit?.abbreviation || line.unit?.name || line.item?.unit?.abbreviation || line.item?.unit?.name || ''}
+                    </td>
                     <td className="py-1.5 text-right">{formatCurrency(line.unitPrice)}</td>
                     <td className="py-1.5 text-right">{formatCurrency(line.lineTotal)}</td>
                   </tr>
@@ -883,30 +1028,30 @@ export function PosPage() {
             </table>
 
             <dl className="mt-3 space-y-1 text-xs">
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-ink-2">
                 <dt>Subtotal</dt>
                 <dd>{formatCurrency(receipt.subtotal)}</dd>
               </div>
               {toNumber(receipt.discountAmount) > 0 && (
-                <div className="flex justify-between text-slate-500">
+                <div className="flex justify-between text-ink-2">
                   <dt>Discount</dt>
                   <dd>- {formatCurrency(receipt.discountAmount)}</dd>
                 </div>
               )}
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-ink-2">
                 <dt>VAT</dt>
                 <dd>{formatCurrency(receipt.taxAmount)}</dd>
               </div>
-              <div className="flex justify-between border-t border-slate-200 pt-1.5 text-sm font-semibold">
+              <div className="flex justify-between border-t border-line pt-1.5 text-sm font-semibold">
                 <dt>Total</dt>
                 <dd>{formatCurrency(receipt.grandTotal)}</dd>
               </div>
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-ink-2">
                 <dt>Paid</dt>
                 <dd>{formatCurrency(receipt.paidAmount)}</dd>
               </div>
               {toNumber(receipt.outstandingAmount) > 0 && (
-                <div className="flex justify-between text-red-600">
+                <div className="flex justify-between text-brand-crimson">
                   <dt>Outstanding</dt>
                   <dd>{formatCurrency(receipt.outstandingAmount)}</dd>
                 </div>
@@ -914,7 +1059,7 @@ export function PosPage() {
             </dl>
 
             {receipt.paymentMethod === 'qr' && (
-              <div className="mt-4 border-t border-dashed border-slate-300 pt-3 text-center">
+              <div className="mt-4 border-t border-dashed border-line pt-3 text-center">
                 <QRCodeSVG
                   value={buildPaymentQrPayload({
                     amount: toNumber(receipt.grandTotal),
@@ -926,13 +1071,13 @@ export function PosPage() {
                   level="M"
                   className="mx-auto"
                 />
-                <p className="mt-2 text-[11px] text-slate-500">
+                <p className="mt-2 text-[11px] text-ink-2">
                   Fonepay / QR · {receipt.invoiceNumber}
                 </p>
               </div>
             )}
 
-            <p className={cn('mt-4 text-center text-[11px] text-slate-400')}>
+            <p className={cn('mt-4 text-center text-[11px] text-ink-3')}>
               {company?.invoiceFooter ?? 'Thank you for your business!'}
             </p>
           </div>

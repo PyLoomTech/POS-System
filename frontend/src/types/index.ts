@@ -83,6 +83,13 @@ export interface StockBalance {
   warehouse: { id: number; name: string; code: string }
 }
 
+export interface ItemUnitConversion {
+  id: number
+  unitId: number
+  factor: string
+  unit: { id: number; name: string; abbreviation: string | null }
+}
+
 export interface Item {
   id: number
   itemCode: string
@@ -94,12 +101,15 @@ export interface Item {
   taxRateId: number | null
   purchasePrice: string
   sellingPrice: string
+  priceListPrices?: ItemPriceListEntry[]
   minimumStock: string
   reorderLevel: string
+  isStockItem: boolean
   isActive: boolean
   category: { id: number; name: string } | null
   brand: { id: number; name: string } | null
   unit: { id: number; name: string; abbreviation: string } | null
+  unitConversions?: ItemUnitConversion[]
   stockBalances: StockBalance[]
 }
 
@@ -116,6 +126,23 @@ export interface TaxRate {
   name: string
   rate: number
   isDefault: boolean
+}
+
+export interface PriceList {
+  id: number
+  code: string
+  name: string
+  description: string | null
+  isDefault: boolean
+}
+
+export interface ItemPriceListEntry {
+  id: number
+  priceListId: number
+  unitId: number | null
+  price: string
+  unit?: { id: number; name: string; abbreviation: string | null } | null
+  priceList?: { id: number; name: string; code: string }
 }
 
 export interface WalkinCustomer {
@@ -140,12 +167,15 @@ export interface CompanySettings {
 export interface SalesInvoiceLine {
   id: string | number
   itemId: number
+  unitId?: number | null
+  conversionFactor?: string
   quantity: string
   unitPrice: string
   discountPct: string
   taxAmount: string
   lineTotal: string
   item?: Item
+  unit?: { id: number; name: string; abbreviation: string | null } | null
 }
 
 export interface SalesInvoiceDetail {

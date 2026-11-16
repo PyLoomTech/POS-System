@@ -10,10 +10,11 @@ import {
   Wallet,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card, StatCard } from '@/components/ui/Card'
-import { DataTable } from '@/components/ui/DataTable'
-import type { Column } from '@/components/ui/DataTable'
+import { StatCard } from '@/components/ui/Card'
+import { FeedList, initials } from '@/components/ui/FeedList'
+import type { FeedColumn } from '@/components/ui/FeedList'
 import { Field, Input, Select } from '@/components/ui/Input'
+import { DateRangePresets } from '@/components/ui/DateRangePresets'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { ErrorState, Spinner } from '@/components/ui/Feedback'
@@ -113,7 +114,6 @@ const DEFAULT_FILTERS: Filters = {
 export function SalesPage() {
   const navigate = useNavigate()
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
-  const [applied, setApplied] = useState<Filters>(DEFAULT_FILTERS)
 
   const [openId, setOpenId] = useState<string | number | null>(null)
   const [detail, setDetail] = useState<InvoiceDetail | null>(null)
@@ -122,15 +122,15 @@ export function SalesPage() {
 
   const query = useMemo(() => {
     const params = new URLSearchParams()
-    params.set('from', applied.from)
-    params.set('to', applied.to)
-    if (applied.status) params.set('status', applied.status)
-    if (applied.customer) params.set('customer', applied.customer)
-    if (applied.search) params.set('search', applied.search)
+    params.set('from', filters.from)
+    params.set('to', filters.to)
+    if (filters.status) params.set('status', filters.status)
+    if (filters.customer) params.set('customer', filters.customer)
+    if (filters.search) params.set('search', filters.search)
     params.set('page', '1')
     params.set('limit', '50')
     return params.toString()
-  }, [applied])
+  }, [filters])
 
   const { data, loading, error, reload } = useFetch<Paginated<InvoiceRow>>(`/sales?${query}`)
   const { data: customers } = useFetch<Paginated<Customer>>('/customers?limit=100')
@@ -154,7 +154,6 @@ export function SalesPage() {
 
   function clearFilters() {
     setFilters(DEFAULT_FILTERS)
-    setApplied(DEFAULT_FILTERS)
   }
 
   async function openDetail(id: string | number) {
@@ -234,53 +233,42 @@ export function SalesPage() {
     openPrintWindow(`Invoice ${detail.invoiceNumber}`, html)
   }
 
-  const columns: Column<InvoiceRow>[] = [
-    {
-      header: 'Invoice #',
-      cell: (row) => <span className="font-medium text-slate-800">{row.invoiceNumber}</span>,
-    },
-    { header: 'Date', cell: (row) => formatDate(row.invoiceDate) },
-    { header: 'Customer', cell: (row) => row.customer?.name ?? 'Walk-in' },
+  const columns: FeedColumn<InvoiceRow>[] = [
     {
       header: 'Total',
+      width: '130px',
       align: 'right',
-      cell: (row) => <span className="font-medium text-slate-800">{formatCurrency(row.grandTotal)}</span>,
+      cell: (row) => <span className="fv font-semibold text-ink">{formatCurrency(row.grandTotal)}</span>,
     },
     {
       header: 'Paid',
+      width: '130px',
       align: 'right',
-      cell: (row) => <span className="text-slate-600">{formatCurrency(row.paidAmount)}</span>,
+      hideOnMobile: true,
+      cell: (row) => <span className="fv">{formatCurrency(row.paidAmount)}</span>,
     },
     {
       header: 'Outstanding',
+      width: '140px',
       align: 'right',
       cell: (row) => (
-        <span className={toNumber(row.outstandingAmount) > 0 ? 'font-medium text-red-600' : 'text-slate-400'}>
+        <span
+          className={
+            toNumber(row.outstandingAmount) > 0
+              ? 'fv font-medium text-brand-crimson'
+              : 'fv text-ink-3'
+          }
+        >
           {formatCurrency(row.outstandingAmount)}
         </span>
       ),
     },
     {
       header: 'Status',
+      width: '120px',
       align: 'center',
       cell: (row) => (
-        <Badge tone={STATUS_TONES[row.status] ?? 'slate'}>
-          {row.status.replace('_', ' ')}
-        </Badge>
-      ),
-    },
-    {
-      header: 'Actions',
-      align: 'right',
-      cell: (row) => (
-        <Button
-          variant="outline"
-          size="sm"
-          icon={<Eye size={14} />}
-          onClick={() => void openDetail(row.id)}
-        >
-          View
-        </Button>
+        <Badge tone={STATUS_TONES[row.status] ?? 'slate'}>{row.status.replace('_', ' ')}</Badge>
       ),
     },
   ]
@@ -311,91 +299,104 @@ export function SalesPage() {
         />
       </div>
 
-      <Card className="p-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
-          <Field
-            label="Search invoice / customer"
-            className="sm:col-span-2"
-            hint="Type a bill number or customer name"
+      <FeedList
+        rows={rows}
+        rowKey={(row) => row.id}
+        columns={columns}
+        lead={(row) => initials(row.customer?.name ?? 'Walk-in')}
+        title={(row) => row.invoiceNumber}
+        subtitle={(row) => row.customer?.name ?? 'Walk-in'}
+        onRowClick={(row) => void openDetail(row.id)}
+        rowAction={(row) => (
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<Eye size={14} />}
+            onClick={() => void openDetail(row.id)}
           >
-            <div className="relative">
-              <Search
-                size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <Input
-                className="pl-9"
-                placeholder="e.g. SALES-INV-00012 or Ram Bahadur"
-                value={filters.search}
-                onChange={(e) => updateFilter('search', e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    setApplied(filters)
-                  }
-                }}
-              />
+            View
+          </Button>
+        )}
+        groupByDate={(row) => (row.invoiceDate ? row.invoiceDate.slice(0, 10) : '—')}
+        dayLabel={(groupRows) => {
+          const total = groupRows.reduce((sum, row) => sum + toNumber(row.grandTotal), 0)
+          return {
+            label: formatDate(groupRows[0].invoiceDate),
+            meta: `${groupRows.length} invoice${groupRows.length === 1 ? '' : 's'} · ${formatCurrency(total)}`,
+          }
+        }}
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyTitle="No invoices found"
+        emptyDescription="Adjust the filters or record a new sale at the point of sale."
+        toolbar={
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[240px] flex-1">
+              <Field label="Search invoice / customer" hint="Type a bill number or customer name">
+                <div className="relative">
+                  <Search
+                    size={16}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
+                  />
+                  <Input
+                    className="pl-9"
+                    placeholder="e.g. SALES-INV-00012 or Ram Bahadur"
+                    value={filters.search}
+                    onChange={(e) => updateFilter('search', e.target.value)}
+                  />
+                </div>
+              </Field>
             </div>
-          </Field>
-          <Field label="From">
-            <Input
-              type="date"
-              value={filters.from}
-              onChange={(e) => updateFilter('from', e.target.value)}
-            />
-          </Field>
-          <Field label="To">
-            <Input
-              type="date"
-              value={filters.to}
-              onChange={(e) => updateFilter('to', e.target.value)}
-            />
-          </Field>
-          <Field label="Status">
-            <Select value={filters.status} onChange={(e) => updateFilter('status', e.target.value)}>
-              <option value="">All statuses</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="returned">Returned</option>
-              <option value="draft">Draft</option>
-            </Select>
-          </Field>
-          <Field label="Customer">
-            <Select
-              value={filters.customer}
-              onChange={(e) => updateFilter('customer', e.target.value)}
-            >
-              <option value="">All customers</option>
-              {(customers?.data ?? []).map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-6">
-            <Button icon={<Search size={16} />} onClick={() => setApplied(filters)}>
-              Search
-            </Button>
-            <Button variant="outline" icon={<RotateCcw size={14} />} onClick={clearFilters}>
-              Clear
-            </Button>
+            <Field label="From">
+              <Input
+                type="date"
+                value={filters.from}
+                onChange={(e) => updateFilter('from', e.target.value)}
+              />
+            </Field>
+            <Field label="To">
+              <Input
+                type="date"
+                value={filters.to}
+                onChange={(e) => updateFilter('to', e.target.value)}
+              />
+            </Field>
+            <Field label="Status">
+              <Select value={filters.status} onChange={(e) => updateFilter('status', e.target.value)}>
+                <option value="">All statuses</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="returned">Returned</option>
+                <option value="draft">Draft</option>
+              </Select>
+            </Field>
+            <Field label="Customer">
+              <Select
+                value={filters.customer}
+                onChange={(e) => updateFilter('customer', e.target.value)}
+              >
+                <option value="">All customers</option>
+                {(customers?.data ?? []).map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="flex items-end gap-2">
+              <DateRangePresets
+                from={filters.from}
+                to={filters.to}
+                onPick={(range) => setFilters((prev) => ({ ...prev, ...range }))}
+              />
+              <Button variant="outline" icon={<RotateCcw size={14} />} onClick={clearFilters}>
+                Clear
+              </Button>
+            </div>
           </div>
-        </div>
-      </Card>
-
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(row) => row.id}
-          loading={loading}
-          error={error}
-          onRetry={reload}
-          emptyTitle="No invoices found"
-          emptyDescription="Adjust the filters or record a new sale at the point of sale."
-        />
-      </Card>
+        }
+      />
 
       <Modal
         open={openId !== null}
@@ -434,37 +435,39 @@ export function SalesPage() {
         {detail && (
           <div className="space-y-5">
             {detailError && (
-              <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{detailError}</div>
+              <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">
+                {detailError}
+              </div>
             )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <dl className="space-y-1.5 text-sm">
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Customer</dt>
-                  <dd className="text-right font-medium text-slate-800">
+                  <dt className="text-ink-3">Customer</dt>
+                  <dd className="text-right font-medium text-ink">
                     {detail.customer?.name ?? 'Walk-in'}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Phone</dt>
-                  <dd className="text-right text-slate-700">{detail.customer?.phone ?? '—'}</dd>
+                  <dt className="text-ink-3">Phone</dt>
+                  <dd className="text-right text-ink-2">{detail.customer?.phone ?? '—'}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Cashier</dt>
-                  <dd className="text-right text-slate-700">{detail.cashier?.fullName ?? '—'}</dd>
+                  <dt className="text-ink-3">Cashier</dt>
+                  <dd className="text-right text-ink-2">{detail.cashier?.fullName ?? '—'}</dd>
                 </div>
               </dl>
               <dl className="space-y-1.5 text-sm">
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Invoice date</dt>
-                  <dd className="text-right text-slate-700">{formatDate(detail.invoiceDate)}</dd>
+                  <dt className="text-ink-3">Invoice date</dt>
+                  <dd className="text-right text-ink-2">{formatDate(detail.invoiceDate)}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Due date</dt>
-                  <dd className="text-right text-slate-700">{formatDate(detail.dueDate)}</dd>
+                  <dt className="text-ink-3">Due date</dt>
+                  <dd className="text-right text-ink-2">{formatDate(detail.dueDate)}</dd>
                 </div>
                 <div className="flex items-center justify-between gap-4">
-                  <dt className="text-slate-500">Status</dt>
+                  <dt className="text-ink-3">Status</dt>
                   <dd className="text-right">
                     <Badge tone={STATUS_TONES[detail.status] ?? 'slate'}>
                       {detail.status.replace('_', ' ')}
@@ -474,59 +477,47 @@ export function SalesPage() {
               </dl>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Item
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Qty
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Unit price
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Discount
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Tax
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Line total
-                    </th>
+            <div className="overflow-x-auto rounded-xl border border-line">
+              <table className="min-w-full text-[13px]">
+                <thead>
+                  <tr className="border-b border-line">
+                    <th className="px-3 py-2 text-left text-[12.5px] font-medium text-ink-3">Item</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Qty</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Unit price</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Discount</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Tax</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Line total</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {detail.items.map((line) => {
                     const unit = line.item?.unit?.abbreviation ?? line.item?.unit?.name
                     return (
-                      <tr key={line.id}>
+                      <tr key={line.id} className="border-t border-line-2">
                         <td className="px-3 py-2">
-                          <p className="font-medium text-slate-800">
+                          <p className="font-medium text-ink">
                             {line.item?.name ?? `Item #${line.itemId}`}
                           </p>
                           {line.item?.itemCode && (
-                            <p className="font-mono text-[11px] text-slate-400">
+                            <p className="font-mono text-[11px] text-ink-3">
                               {line.item.itemCode}
                             </p>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right text-slate-700">
+                        <td className="px-3 py-2 text-right text-ink-2">
                           {formatNumber(line.quantity, 2)}
-                          {unit ? <span className="ml-1 text-xs text-slate-400">{unit}</span> : null}
+                          {unit ? <span className="ml-1 text-xs text-ink-3">{unit}</span> : null}
                         </td>
-                        <td className="px-3 py-2 text-right text-slate-700">
+                        <td className="px-3 py-2 text-right text-ink-2">
                           {formatCurrency(line.unitPrice)}
                         </td>
-                        <td className="px-3 py-2 text-right text-slate-700">
+                        <td className="px-3 py-2 text-right text-ink-2">
                           {formatCurrency(line.discountAmount)}
                         </td>
-                        <td className="px-3 py-2 text-right text-slate-700">
+                        <td className="px-3 py-2 text-right text-ink-2">
                           {formatCurrency(line.taxAmount)}
                         </td>
-                        <td className="px-3 py-2 text-right font-medium text-slate-800">
+                        <td className="px-3 py-2 text-right font-medium text-ink">
                           {formatCurrency(line.lineTotal)}
                         </td>
                       </tr>
@@ -538,39 +529,39 @@ export function SalesPage() {
 
             <div className="flex flex-col gap-4 sm:flex-row sm:justify-end">
               <dl className="w-full space-y-1.5 text-sm sm:max-w-xs">
-                <div className="flex justify-between text-slate-500">
+                <div className="flex justify-between text-ink-3">
                   <dt>Subtotal</dt>
                   <dd>{formatCurrency(detail.subtotal)}</dd>
                 </div>
-                <div className="flex justify-between text-slate-500">
+                <div className="flex justify-between text-ink-3">
                   <dt>Discount</dt>
                   <dd>- {formatCurrency(detail.discountAmount)}</dd>
                 </div>
-                <div className="flex justify-between text-slate-500">
+                <div className="flex justify-between text-ink-3">
                   <dt>Taxable</dt>
                   <dd>{formatCurrency(detail.taxableAmount)}</dd>
                 </div>
-                <div className="flex justify-between text-slate-500">
+                <div className="flex justify-between text-ink-3">
                   <dt>Non-taxable</dt>
                   <dd>{formatCurrency(detail.nonTaxableAmount)}</dd>
                 </div>
-                <div className="flex justify-between text-slate-500">
+                <div className="flex justify-between text-ink-3">
                   <dt>VAT</dt>
                   <dd>{formatCurrency(detail.taxAmount)}</dd>
                 </div>
-                <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold text-slate-900">
+                <div className="flex justify-between border-t border-line pt-2 text-base font-semibold text-ink">
                   <dt>Grand Total</dt>
                   <dd>{formatCurrency(detail.grandTotal)}</dd>
                 </div>
-                <div className="flex justify-between text-slate-500">
+                <div className="flex justify-between text-ink-3">
                   <dt>Paid</dt>
                   <dd>{formatCurrency(detail.paidAmount)}</dd>
                 </div>
                 <div
                   className={
                     toNumber(detail.outstandingAmount) > 0
-                      ? 'flex justify-between font-medium text-red-600'
-                      : 'flex justify-between text-slate-500'
+                      ? 'flex justify-between font-medium text-brand-crimson'
+                      : 'flex justify-between text-ink-3'
                   }
                 >
                   <dt>Outstanding</dt>
@@ -580,22 +571,22 @@ export function SalesPage() {
             </div>
 
             {detail.paymentAllocations && detail.paymentAllocations.length > 0 && (
-              <div className="rounded-xl border border-slate-200 p-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <div className="rounded-xl border border-line p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">
                   Payments
                 </p>
                 <ul className="space-y-1.5 text-sm">
                   {detail.paymentAllocations.map((allocation) => (
                     <li key={allocation.id} className="flex justify-between">
-                      <span className="capitalize text-slate-600">
+                      <span className="capitalize text-ink-2">
                         {(allocation.payment?.paymentMethod ?? 'payment').replace('_', ' ')}
                         {allocation.payment?.paymentNumber ? (
-                          <span className="ml-1 text-xs text-slate-400">
+                          <span className="ml-1 text-xs text-ink-3">
                             {allocation.payment.paymentNumber}
                           </span>
                         ) : null}
                       </span>
-                      <span className="font-medium text-slate-800">
+                      <span className="font-medium text-ink">
                         {formatCurrency(allocation.payment?.amount ?? allocation.allocatedAmount)}
                       </span>
                     </li>
@@ -605,12 +596,10 @@ export function SalesPage() {
             )}
 
             {detail.notes && (
-              <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                {detail.notes}
-              </div>
+              <div className="rounded-xl bg-line-2 px-3 py-2 text-xs text-ink-2">{detail.notes}</div>
             )}
 
-            <p className="text-[11px] text-slate-400">Created {formatDateTime(detail.createdAt)}</p>
+            <p className="text-[11px] text-ink-3">Created {formatDateTime(detail.createdAt)}</p>
           </div>
         )}
       </Modal>

@@ -18,6 +18,8 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { DataTable } from '@/components/ui/DataTable'
 import type { Column } from '@/components/ui/DataTable'
+import { FeedList, initials } from '@/components/ui/FeedList'
+import type { FeedColumn } from '@/components/ui/FeedList'
 import { Field, Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
@@ -165,7 +167,7 @@ export function AccountingPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+      <div className="flex flex-wrap gap-1.5 rounded-2xl border border-line bg-white/70 p-1.5 shadow-sm">
         {TABS.map((item) => {
           const Icon = item.icon
           const active = tab === item.id
@@ -176,7 +178,7 @@ export function AccountingPage() {
               onClick={() => setTab(item.id)}
               className={cn(
                 'inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition',
-                active ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100',
+                active ? 'bg-accent text-white shadow-sm' : 'text-ink-2 hover:bg-line-2',
               )}
             >
               <Icon size={16} />
@@ -343,7 +345,7 @@ function AccountsTab() {
     {
       header: 'Code',
       cell: ({ account }) => (
-        <span className="font-mono text-xs text-slate-500">{account.accountCode}</span>
+        <span className="font-mono text-xs text-ink-3">{account.accountCode}</span>
       ),
     },
     {
@@ -354,7 +356,7 @@ function AccountsTab() {
             <button
               type="button"
               onClick={() => toggleNode(account.id)}
-              className="rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              className="rounded p-0.5 text-ink-3 transition-colors hover:bg-line-2 hover:text-ink"
               aria-label={collapsed.has(account.id) ? 'Expand' : 'Collapse'}
             >
               {collapsed.has(account.id) ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
@@ -365,7 +367,7 @@ function AccountsTab() {
           <span
             className={cn(
               'truncate',
-              account.isGroup ? 'font-semibold text-slate-800' : 'font-medium text-slate-700',
+              account.isGroup ? 'font-semibold text-ink' : 'font-medium text-ink',
             )}
           >
             {account.name}
@@ -386,26 +388,26 @@ function AccountsTab() {
       header: 'Debit',
       align: 'right',
       cell: ({ account }) => (
-        <span className="text-slate-700">{formatCurrency(account.debit ?? 0)}</span>
+        <span className="text-ink">{formatCurrency(account.debit ?? 0)}</span>
       ),
     },
     {
       header: 'Credit',
       align: 'right',
       cell: ({ account }) => (
-        <span className="text-slate-700">{formatCurrency(account.credit ?? 0)}</span>
+        <span className="text-ink">{formatCurrency(account.credit ?? 0)}</span>
       ),
     },
     {
       header: 'Balance',
       align: 'right',
       cell: ({ account }) => (
-        <span className="font-medium text-slate-800">
+        <span className="font-medium text-ink">
           {formatCurrency(account.balance ?? 0)}
           <span
             className={cn(
               'ml-1.5 text-[11px] font-semibold',
-              account.balanceType === 'Dr' ? 'text-blue-600' : 'text-amber-600',
+              account.balanceType === 'Dr' ? 'text-accent' : 'text-brand-amber',
             )}
           >
             {account.balanceType ?? 'Dr'}
@@ -438,17 +440,17 @@ function AccountsTab() {
     { header: 'Date', cell: (row) => formatDate(row.date) },
     {
       header: 'Voucher',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.voucherNumber}</span>,
+      cell: (row) => <span className="font-mono text-xs text-ink-3">{row.voucherNumber}</span>,
     },
-    { header: 'Narration', cell: (row) => row.narration ?? <span className="text-slate-400">—</span> },
+    { header: 'Narration', cell: (row) => row.narration ?? <span className="text-ink-3">—</span> },
     {
       header: 'Debit',
       align: 'right',
       cell: (row) =>
         toNumber(row.debit) > 0 ? (
-          <span className="text-slate-700">{formatCurrency(row.debit)}</span>
+          <span className="text-ink">{formatCurrency(row.debit)}</span>
         ) : (
-          <span className="text-slate-300">—</span>
+          <span className="text-ink-3">—</span>
         ),
     },
     {
@@ -456,15 +458,15 @@ function AccountsTab() {
       align: 'right',
       cell: (row) =>
         toNumber(row.credit) > 0 ? (
-          <span className="text-slate-700">{formatCurrency(row.credit)}</span>
+          <span className="text-ink">{formatCurrency(row.credit)}</span>
         ) : (
-          <span className="text-slate-300">—</span>
+          <span className="text-ink-3">—</span>
         ),
     },
     {
       header: 'Balance',
       align: 'right',
-      cell: (row) => <span className="font-medium text-slate-800">{formatCurrency(row.balance)}</span>,
+      cell: (row) => <span className="font-medium text-ink">{formatCurrency(row.balance)}</span>,
     },
   ]
 
@@ -491,7 +493,7 @@ function AccountsTab() {
           <div className="relative mb-[2px]">
             <Search
               size={16}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
             />
             <Input
               className="w-60 pl-9"
@@ -552,7 +554,7 @@ function AccountsTab() {
       >
         <form id="account-form" onSubmit={onSubmit} className="space-y-4">
           {formError && (
-            <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</div>
+            <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">{formError}</div>
           )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Account code" required>
@@ -609,10 +611,10 @@ function AccountsTab() {
               />
             </Field>
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
+          <label className="flex items-center gap-2 text-sm text-ink-2">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              className="h-4 w-4 rounded border-line text-accent focus:ring-accent/30"
               checked={form.isGroup}
               onChange={(event) => setForm((prev) => ({ ...prev, isGroup: event.target.checked }))}
             />
@@ -651,24 +653,24 @@ function AccountsTab() {
           {ledgerLoading ? (
             <Spinner label="Loading ledger…" />
           ) : ledgerError ? (
-            <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{ledgerError}</p>
+            <p className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">{ledgerError}</p>
           ) : ledger ? (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
-                  <p className="text-xs text-slate-500">Opening balance</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-800">
+                <div className="rounded-xl border border-line bg-line-2 px-4 py-3">
+                  <p className="text-xs text-ink-3">Opening balance</p>
+                  <p className="mt-1 text-lg font-semibold text-ink">
                     {formatCurrency(ledger.openingBalance)}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-blue-50/60 px-4 py-3">
-                  <p className="text-xs text-slate-500">Closing balance</p>
-                  <p className="mt-1 text-lg font-semibold text-blue-700">
+                <div className="rounded-xl border border-line bg-soft px-4 py-3">
+                  <p className="text-xs text-ink-3">Closing balance</p>
+                  <p className="mt-1 text-lg font-semibold text-accent-2">
                     {formatCurrency(ledger.closingBalance)}
                   </p>
                 </div>
               </div>
-              <div className="overflow-hidden rounded-xl border border-slate-200">
+              <div className="overflow-hidden rounded-xl border border-line">
                 <DataTable
                   columns={ledgerColumns}
                   rows={ledger.entries}
@@ -753,25 +755,22 @@ function JournalTab() {
     }
   }
 
-  const columns: Column<JournalEntry>[] = [
-    {
-      header: 'Voucher no',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.voucherNumber}</span>,
-    },
-    { header: 'Date', cell: (row) => formatDate(row.voucherDate) },
-    { header: 'Type', cell: (row) => row.voucherType ?? '—' },
-    { header: 'Narration', cell: (row) => row.narration ?? <span className="text-slate-400">—</span> },
+  const columns: FeedColumn<JournalEntry>[] = [
+    { header: 'Type', hideOnMobile: true, cell: (row) => row.voucherType ?? '—' },
+    { header: 'Narration', hideOnMobile: true, cell: (row) => row.narration ?? '—' },
     {
       header: 'Amount',
+      width: '150px',
       align: 'right',
       cell: (row) => (
-        <span className="font-medium text-slate-800">
+        <span className="font-semibold text-ink">
           {formatCurrency(row.lines.reduce((sum, line) => sum + toNumber(line.debit), 0))}
         </span>
       ),
     },
     {
       header: 'Status',
+      width: '120px',
       align: 'center',
       cell: (row) => (
         <Badge tone={JOURNAL_STATUS_TONES[row.status] ?? 'slate'}>{row.status}</Badge>
@@ -803,18 +802,20 @@ function JournalTab() {
         </Button>
       </div>
 
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={data?.data ?? []}
-          rowKey={(row) => String(row.id)}
-          loading={loading}
-          error={error}
-          onRetry={reload}
-          emptyTitle="No journal entries"
-          emptyDescription="Manual and system-generated vouchers will be listed here."
-        />
-      </Card>
+      <FeedList
+        rows={data?.data ?? []}
+        rowKey={(row) => String(row.id)}
+        columns={columns}
+        lead={(row) => initials(row.voucherNumber)}
+        title={(row) => row.voucherNumber}
+        subtitle={(row) => formatDate(row.voucherDate)}
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyTitle="No journal entries"
+        emptyDescription="Manual and system-generated vouchers will be listed here."
+        emptyIcon={<BookText size={20} />}
+      />
 
       <Modal
         open={open}
@@ -834,7 +835,7 @@ function JournalTab() {
       >
         <form id="journal-form" onSubmit={onSubmit} className="space-y-4">
           {formError && (
-            <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</div>
+            <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">{formError}</div>
           )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -865,7 +866,7 @@ function JournalTab() {
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lines</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink-3">Lines</span>
               <Button
                 type="button"
                 variant="outline"
@@ -880,7 +881,7 @@ function JournalTab() {
             {lines.map((line) => (
               <div
                 key={line.key}
-                className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 p-3 sm:grid-cols-[1fr_120px_120px_1fr_auto] sm:items-end"
+                className="grid grid-cols-1 gap-3 rounded-2xl border border-line p-3 sm:grid-cols-[1fr_120px_120px_1fr_auto] sm:items-end"
               >
                 <Field label="Account">
                   <Select
@@ -924,7 +925,7 @@ function JournalTab() {
                   onClick={() =>
                     setLines((prev) => (prev.length > 2 ? prev.filter((row) => row.key !== line.key) : prev))
                   }
-                  className="mb-1 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  className="mb-1 rounded-lg p-2 text-ink-3 hover:bg-[#f9e4e7] hover:text-brand-crimson"
                   aria-label="Remove line"
                 >
                   <Trash2 size={16} />
@@ -934,25 +935,25 @@ function JournalTab() {
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3">
-              <p className="text-xs text-slate-500">Total debit</p>
-              <p className="mt-1 text-base font-semibold text-slate-800">{formatCurrency(totalDebit)}</p>
+            <div className="rounded-2xl border border-line bg-line-2 px-4 py-3">
+              <p className="text-xs text-ink-3">Total debit</p>
+              <p className="mt-1 text-base font-semibold text-ink">{formatCurrency(totalDebit)}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3">
-              <p className="text-xs text-slate-500">Total credit</p>
-              <p className="mt-1 text-base font-semibold text-slate-800">{formatCurrency(totalCredit)}</p>
+            <div className="rounded-2xl border border-line bg-line-2 px-4 py-3">
+              <p className="text-xs text-ink-3">Total credit</p>
+              <p className="mt-1 text-base font-semibold text-ink">{formatCurrency(totalCredit)}</p>
             </div>
             <div
               className={cn(
                 'rounded-2xl border px-4 py-3',
-                balanced ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60',
+                balanced ? 'border-[#b7e0d2] bg-[#e3f2ec]' : 'border-[#e6cfa3] bg-[#f7efdd]',
               )}
             >
-              <p className="text-xs text-slate-500">Difference</p>
+              <p className="text-xs text-ink-3">Difference</p>
               <p
                 className={cn(
                   'mt-1 text-base font-semibold',
-                  balanced ? 'text-emerald-700' : 'text-amber-700',
+                  balanced ? 'text-brand-green' : 'text-brand-amber',
                 )}
               >
                 {formatCurrency(difference)}
@@ -960,7 +961,7 @@ function JournalTab() {
             </div>
           </div>
           {!balanced && (
-            <p className="text-xs text-amber-600">
+            <p className="text-xs text-brand-amber">
               Debit and credit totals must be equal and greater than zero before the entry can be posted.
             </p>
           )}
@@ -984,14 +985,14 @@ function TrialBalanceTab() {
   const columns: Column<TrialBalanceRow>[] = [
     {
       header: 'Code',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.accountCode}</span>,
+      cell: (row) => <span className="font-mono text-xs text-ink-3">{row.accountCode}</span>,
     },
     {
       header: 'Account',
       cell: (row) => (
         <div>
-          <p className="font-medium text-slate-800">{row.name}</p>
-          <p className="text-xs text-slate-400">
+          <p className="font-medium text-ink">{row.name}</p>
+          <p className="text-xs text-ink-3">
             {ACCOUNT_TYPE_LABELS[row.accountType] ?? row.accountType}
           </p>
         </div>
@@ -1000,12 +1001,12 @@ function TrialBalanceTab() {
     {
       header: 'Debit',
       align: 'right',
-      cell: (row) => <span className="text-slate-700">{formatCurrency(row.debit)}</span>,
+      cell: (row) => <span className="text-ink">{formatCurrency(row.debit)}</span>,
     },
     {
       header: 'Credit',
       align: 'right',
-      cell: (row) => <span className="text-slate-700">{formatCurrency(row.credit)}</span>,
+      cell: (row) => <span className="text-ink">{formatCurrency(row.credit)}</span>,
     },
   ]
 
@@ -1034,18 +1035,18 @@ function TrialBalanceTab() {
           emptyDescription="Post journal entries to see account balances here."
         />
         {rows.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Totals</span>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-line-2 px-4 py-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-3">Totals</span>
             <div className="flex items-center gap-8 text-sm">
-              <span className="text-slate-500">
+              <span className="text-ink-3">
                 Total debit{' '}
-                <span className="font-semibold text-slate-800">
+                <span className="font-semibold text-ink">
                   {formatCurrency(data?.totalDebit)}
                 </span>
               </span>
-              <span className="text-slate-500">
+              <span className="text-ink-3">
                 Total credit{' '}
-                <span className="font-semibold text-slate-800">
+                <span className="font-semibold text-ink">
                   {formatCurrency(data?.totalCredit)}
                 </span>
               </span>
@@ -1111,7 +1112,7 @@ function FiscalPeriodsTab() {
   const columns: Column<FiscalPeriod>[] = [
     {
       header: 'Name',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.name}</span>,
     },
     { header: 'Start', cell: (row) => formatDate(row.startDate) },
     { header: 'End', cell: (row) => formatDate(row.endDate) },
@@ -1124,14 +1125,14 @@ function FiscalPeriodsTab() {
     },
     {
       header: 'Closed at',
-      cell: (row) => (row.closedAt ? formatDate(row.closedAt) : <span className="text-slate-400">—</span>),
+      cell: (row) => (row.closedAt ? formatDate(row.closedAt) : <span className="text-ink-3">—</span>),
     },
     {
       header: 'Actions',
       align: 'right',
       cell: (row) =>
         row.isClosed ? (
-          <span className="text-xs text-slate-400">Closed</span>
+          <span className="text-xs text-ink-3">Closed</span>
         ) : (
           <Button
             variant="outline"
@@ -1149,7 +1150,7 @@ function FiscalPeriodsTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-3">
           Closing a period locks the books for that date range. Tracking {formatNumber(data?.data.length ?? 0)} period(s).
         </p>
         <Button icon={<Plus size={16} />} onClick={openCreate}>
@@ -1188,7 +1189,7 @@ function FiscalPeriodsTab() {
       >
         <form id="fiscal-form" onSubmit={onSubmit} className="space-y-4">
           {formError && (
-            <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</div>
+            <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">{formError}</div>
           )}
           <Field label="Name" required hint="e.g. FY 2026-2027">
             <Input value={name} onChange={(event) => setName(event.target.value)} required />

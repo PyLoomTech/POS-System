@@ -12,17 +12,19 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-blue-600 text-white shadow-sm hover:bg-blue-700 active:bg-blue-800',
-  secondary: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
-  danger: 'bg-red-600 text-white shadow-sm hover:bg-red-700 active:bg-red-800',
-  outline: 'border border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50',
-  ghost: 'text-slate-600 hover:bg-slate-100',
+  primary:
+    'bg-[linear-gradient(180deg,#0f78c9,#0a62ac)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.26),0_2px_8px_rgba(11,106,186,.26)] hover:bg-[linear-gradient(180deg,#0b6aba,#0a5a9e)]',
+  secondary: 'bg-blue-50 text-blue-700 hover:bg-blue-100',
+  danger:
+    'border border-[#e3b7be] bg-white/70 text-brand-crimson hover:bg-[#fbf0f2]',
+  outline: 'border border-line bg-white/70 text-ink hover:border-[rgba(11,106,186,.42)]',
+  ghost: 'text-ink-2 hover:bg-line-2 hover:text-ink',
 }
 
 const SIZES: Record<ButtonSize, string> = {
-  sm: 'px-3 py-1.5 text-xs',
-  md: 'px-4 py-2 text-sm',
-  lg: 'px-5 py-2.5 text-base',
+  sm: 'min-h-8 px-2.5 text-[13px]',
+  md: 'min-h-9 px-3.5 text-sm',
+  lg: 'min-h-[38px] px-4 text-sm',
 }
 
 export function Button({
@@ -38,7 +40,7 @@ export function Button({
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60',
+        'inline-flex items-center justify-center gap-[7px] rounded-md border border-transparent font-medium whitespace-nowrap transition-colors focus:outline-none disabled:cursor-not-allowed disabled:opacity-60',
         VARIANTS[variant],
         SIZES[size],
         className,

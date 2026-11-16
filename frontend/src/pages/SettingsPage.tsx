@@ -127,7 +127,7 @@ function CompanyProfileTab() {
           subtitle="Shown on invoices, receipts and reports"
           action={
             saved ? (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-green">
                 <Check size={14} /> Saved
               </span>
             ) : undefined
@@ -135,7 +135,7 @@ function CompanyProfileTab() {
         />
         <div className="space-y-4 p-5">
           {formError && (
-            <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</div>
+            <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">{formError}</div>
           )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -217,8 +217,8 @@ function CompanyProfileTab() {
       <Card className="h-fit lg:sticky lg:top-4">
         <CardHeader title="Receipt Preview" subtitle="How your header and footer will print" />
         <div className="p-5">
-          <div className="text-slate-900">
-            <div className="border-b border-dashed border-slate-300 pb-3 text-center">
+          <div className="text-ink">
+            <div className="border-b border-dashed border-line pb-3 text-center">
               {form.companyLogo && (
                 <img
                   src={form.companyLogo}
@@ -228,35 +228,35 @@ function CompanyProfileTab() {
               )}
               <p className="text-base font-semibold">{form.companyName || 'Pyloom POS'}</p>
               {form.addressLine1 && (
-                <p className="text-xs text-slate-500">{form.addressLine1}</p>
+                <p className="text-xs text-ink-3">{form.addressLine1}</p>
               )}
               {form.addressLine2 && (
-                <p className="text-xs text-slate-500">{form.addressLine2}</p>
+                <p className="text-xs text-ink-3">{form.addressLine2}</p>
               )}
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-3">
                 {[form.city, form.phone].filter(Boolean).join(' · ') || 'City · Phone'}
               </p>
               {form.panVatNumber && (
-                <p className="text-xs text-slate-500">PAN/VAT: {form.panVatNumber}</p>
+                <p className="text-xs text-ink-3">PAN/VAT: {form.panVatNumber}</p>
               )}
             </div>
 
-            <div className="flex justify-between py-2 text-xs text-slate-500">
+            <div className="flex justify-between py-2 text-xs text-ink-3">
               <span>Invoice: INV-000001</span>
               <span>—</span>
             </div>
-            <p className="pb-2 text-xs text-slate-500">Customer: Walk-in Customer</p>
+            <p className="pb-2 text-xs text-ink-3">Customer: Walk-in Customer</p>
 
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-y border-slate-200 text-slate-500">
+                <tr className="border-y border-line text-ink-3">
                   <th className="py-1.5 text-left font-medium">Item</th>
                   <th className="py-1.5 text-right font-medium">Qty</th>
                   <th className="py-1.5 text-right font-medium">Amount</th>
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b border-slate-100">
+                <tr className="border-b border-line-2">
                   <td className="py-1.5">Sample item</td>
                   <td className="py-1.5 text-right">1</td>
                   <td className="py-1.5 text-right">Rs. 100.00</td>
@@ -264,7 +264,7 @@ function CompanyProfileTab() {
               </tbody>
             </table>
 
-            <p className={cn('mt-4 text-center text-[11px] text-slate-400')}>
+            <p className={cn('mt-4 text-center text-[11px] text-ink-3')}>
               {form.invoiceFooter || 'Thank you for your business!'}
             </p>
           </div>
@@ -377,7 +377,7 @@ function ApplicationSettingsTab() {
           action={
             <div className="flex items-center gap-3">
               {saved && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-green">
                   <Check size={14} /> Saved
                 </span>
               )}
@@ -390,7 +390,7 @@ function ApplicationSettingsTab() {
 
         <div className="space-y-3 p-5">
           {formError && (
-            <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</div>
+            <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">{formError}</div>
           )}
 
           {rows.length === 0 ? (
@@ -407,7 +407,7 @@ function ApplicationSettingsTab() {
             rows.map((row) => (
               <div
                 key={row.id}
-                className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 p-3 sm:grid-cols-[240px_1fr_auto] sm:items-end"
+                className="grid grid-cols-1 gap-3 rounded-2xl border border-line p-3 sm:grid-cols-[240px_1fr_auto] sm:items-end"
               >
                 {row.isNew ? (
                   <Field label="Key" required error={rowErrors[row.id]}>
@@ -420,8 +420,8 @@ function ApplicationSettingsTab() {
                   </Field>
                 ) : (
                   <div className="space-y-1">
-                    <span className="block text-xs font-medium text-slate-600">Key</span>
-                    <span className="flex h-9 items-center rounded-xl bg-slate-50 px-3.5 font-mono text-xs text-slate-600">
+                    <span className="block text-xs font-medium text-ink-2">Key</span>
+                    <span className="flex h-9 items-center rounded-xl bg-line-2 px-3.5 font-mono text-xs text-ink-2">
                       {row.key}
                     </span>
                   </div>
@@ -441,7 +441,7 @@ function ApplicationSettingsTab() {
                   size="sm"
                   icon={<Trash2 size={14} />}
                   onClick={() => removeRow(row.id)}
-                  className="text-red-600 hover:bg-red-50"
+                  className="text-brand-crimson hover:bg-[#f9e4e7]"
                 >
                   Remove
                 </Button>
@@ -478,8 +478,8 @@ export function SettingsPage() {
             className={cn(
               'inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors',
               tab === item.key
-                ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                ? 'border-accent bg-accent text-white shadow-sm'
+                : 'border-line bg-white text-ink-2 hover:bg-line-2',
             )}
           >
             {item.icon}

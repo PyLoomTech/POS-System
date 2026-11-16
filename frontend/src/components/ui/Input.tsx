@@ -7,7 +7,7 @@ import type {
 import { cn } from '@/lib/utils'
 
 const BASE =
-  'w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-50 disabled:text-slate-400'
+  'w-full rounded-md border border-[rgba(30,80,130,.24)] bg-white/80 px-3 py-2 text-sm text-ink transition placeholder:text-slate-400 hover:border-[rgba(11,106,186,.45)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-blue-600/20 disabled:bg-[rgba(20,70,120,.07)] disabled:text-ink-3'
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={cn(BASE, className)} {...props} />
@@ -40,16 +40,16 @@ interface FieldProps {
 
 export function Field({ label, required, hint, error, className, children }: FieldProps) {
   return (
-    <label className={cn('block space-y-1', className)}>
+    <label className={cn('block space-y-1.5', className)}>
       {label && (
-        <span className="block text-xs font-medium text-slate-600">
+        <span className="block text-[13px] font-medium text-ink-2">
           {label}
-          {required && <span className="text-red-500"> *</span>}
+          {required && <span className="text-brand-crimson"> *</span>}
         </span>
       )}
       {children}
-      {hint && !error && <span className="block text-xs text-slate-400">{hint}</span>}
-      {error && <span className="block text-xs text-red-500">{error}</span>}
+      {hint && !error && <span className="block text-[12.5px] text-ink-3">{hint}</span>}
+      {error && <span className="block text-[12.5px] text-brand-crimson">{error}</span>}
     </label>
   )
 }

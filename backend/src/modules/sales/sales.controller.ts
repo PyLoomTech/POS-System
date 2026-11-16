@@ -9,6 +9,7 @@ import { calculateLineTax, calculateInvoiceTotals } from '../../utils/tax';
 
 const lineItemSchema = z.object({
   itemId: z.number().int().positive(),
+  unitId: z.number().int().positive().optional(),
   quantity: z.number().positive(),
   unitPrice: z.number().min(0),
   discountPct: z.number().min(0).max(100).default(0),
@@ -57,8 +58,20 @@ export async function createSalesInvoice(req: AuthRequest, res: Response, next: 
       let totalPaid = new Decimal(0);
 
       for (const li of data.items) {
-        const item = await tx.item.findUnique({ where: { id: li.itemId } });
+        const item = await tx.item.findUnique({
+          where: { id: li.itemId },
+          include: { unitConversions: true },
+        });
         if (!item) throw createError(`Item ID ${li.itemId} not found.`, 404);
+
+        const unitId = li.unitId ?? item.unitId;
+        const conversionFactor = unitId === item.unitId
+          ? 1
+          : Number(item.unitConversions.find((conversion) => conversion.unitId === unitId)?.factor ?? 0);
+        if (conversionFactor <= 0) {
+          throw createError(`Selected UOM is not configured for '${item.name}'.`, 400);
+        }
+        const baseQuantity = new Decimal(li.quantity).times(conversionFactor);
 
         // Advisory lock per item to prevent concurrent oversell
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(${li.itemId})`;
@@ -69,7 +82,7 @@ export async function createSalesInvoice(req: AuthRequest, res: Response, next: 
         });
 
         const currentStock = Number(balance?.quantity || 0);
-        if (currentStock < li.quantity) {
+        if (currentStock < baseQuantity.toNumber()) {
           throw createError(`Insufficient stock for '${item.name}'. Available: ${currentStock}`, 400);
         }
 
@@ -85,6 +98,9 @@ export async function createSalesInvoice(req: AuthRequest, res: Response, next: 
           li,
           item,
           balance,
+          unitId,
+          conversionFactor,
+          baseQuantity,
           calc,
           costAtSale: balance?.averageCost || item.purchasePrice,
         });
@@ -147,11 +163,13 @@ export async function createSalesInvoice(req: AuthRequest, res: Response, next: 
       });
 
       // Create line items and update inventory
-      for (const { li, item, balance, calc, costAtSale } of lineResults) {
+      for (const { li, item, balance, unitId, conversionFactor, baseQuantity, calc, costAtSale } of lineResults) {
         await tx.salesInvoiceItem.create({
           data: {
             invoiceId: invoice.id,
             itemId: li.itemId,
+            unitId,
+            conversionFactor,
             quantity: li.quantity,
             unitPrice: li.unitPrice,
             discountPct: li.discountPct,
@@ -169,7 +187,7 @@ export async function createSalesInvoice(req: AuthRequest, res: Response, next: 
         if (balance) {
           await tx.stockBalance.update({
             where: { id: balance.id },
-            data: { quantity: { decrement: li.quantity } },
+            data: { quantity: { decrement: baseQuantity.toNumber() } },
           });
 
           await tx.inventoryMovement.create({
@@ -177,7 +195,7 @@ export async function createSalesInvoice(req: AuthRequest, res: Response, next: 
               itemId: li.itemId,
               warehouseId: balance.warehouseId,
               movementType: 'sale',
-              quantity: -li.quantity,
+              quantity: baseQuantity.negated().toNumber(),
               unitCost: Number(costAtSale),
               referenceType: 'sales_invoice',
               referenceId: invoice.id,
@@ -221,7 +239,7 @@ export async function createSalesInvoice(req: AuthRequest, res: Response, next: 
 
     const full = await prisma.salesInvoice.findUnique({
       where: { id: result.id },
-      include: { items: { include: { item: true } }, customer: true },
+      include: { items: { include: { item: true, unit: true } }, customer: true },
     });
 
     return res.status(201).json(full);
@@ -272,8 +290,8 @@ function buildSalesJournalLines(
 
   // COGS entries
   let totalCost = 0;
-  for (const { li, costAtSale } of lineResults) {
-    totalCost += li.quantity * Number(costAtSale);
+  for (const { baseQuantity, costAtSale } of lineResults) {
+    totalCost += baseQuantity.toNumber() * Number(costAtSale);
   }
   if (totalCost > 0) {
     lines.push({ accountId: accounts['51000'], debit: parseFloat(totalCost.toFixed(2)), credit: 0, narration: 'Cost of Goods Sold' });
@@ -325,7 +343,7 @@ export async function getSalesInvoice(req: Request, res: Response, next: NextFun
       include: {
         customer: true,
         cashier: { select: { id: true, fullName: true } },
-        items: { include: { item: { include: { unit: true } } } },
+        items: { include: { item: { include: { unit: true } }, unit: true } },
         paymentAllocations: {
           include: { payment: { select: { paymentMethod: true, amount: true, paymentNumber: true, paymentDate: true } } },
         },
@@ -350,7 +368,8 @@ export async function cancelSalesInvoice(req: AuthRequest, res: Response, next: 
       for (const item of invoice.items) {
         const balance = await tx.stockBalance.findFirst({ where: { itemId: item.itemId } });
         if (balance) {
-          await tx.stockBalance.update({ where: { id: balance.id }, data: { quantity: { increment: Number(item.quantity) } } });
+          const baseQuantity = Number(item.quantity) * Number(item.conversionFactor);
+          await tx.stockBalance.update({ where: { id: balance.id }, data: { quantity: { increment: baseQuantity } } });
         }
       }
       await tx.salesInvoice.update({ where: { id }, data: { status: 'cancelled' } });

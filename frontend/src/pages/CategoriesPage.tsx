@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Plus } from 'lucide-react'
+import { FolderTree, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
-import { DataTable } from '@/components/ui/DataTable'
-import type { Column } from '@/components/ui/DataTable'
+import { FeedList, initials } from '@/components/ui/FeedList'
+import type { FeedColumn } from '@/components/ui/FeedList'
 import { Field, Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
@@ -24,22 +23,17 @@ export function CategoriesPage() {
   const categories = data ?? []
   const nameById = new Map(categories.map((category) => [category.id, category.name]))
 
-  const columns: Column<Category>[] = [
-    {
-      header: 'Name',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
-    },
-    {
-      header: 'Parent',
-      cell: (row) => (row.parentId ? nameById.get(row.parentId) ?? '—' : '—'),
-    },
+  const columns: FeedColumn<Category>[] = [
     {
       header: 'Sub-categories',
+      width: '140px',
       align: 'right',
-      cell: (row) => row.children?.length ?? 0,
+      hideOnMobile: true,
+      cell: (row) => <span className="fv">{row.children?.length ?? 0}</span>,
     },
     {
       header: 'Status',
+      width: '120px',
       align: 'center',
       cell: (row) => (
         <Badge tone={row.isActive ? 'green' : 'slate'}>{row.isActive ? 'Active' : 'Inactive'}</Badge>
@@ -75,18 +69,22 @@ export function CategoriesPage() {
         </Button>
       </div>
 
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={categories}
-          rowKey={(row) => row.id}
-          loading={loading}
-          error={error}
-          onRetry={reload}
-          emptyTitle="No categories yet"
-          emptyDescription="Organise your items with categories and sub-categories."
-        />
-      </Card>
+      <FeedList
+        rows={categories}
+        rowKey={(row) => row.id}
+        columns={columns}
+        lead={(row) => initials(row.name)}
+        title={(row) => row.name}
+        subtitle={(row) =>
+          row.parentId ? nameById.get(row.parentId) ?? '—' : 'Top-level category'
+        }
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyIcon={<FolderTree size={20} />}
+        emptyTitle="No categories yet"
+        emptyDescription="Organise your items with categories and sub-categories."
+      />
 
       <Modal
         open={open}
@@ -106,7 +104,9 @@ export function CategoriesPage() {
       >
         <form id="category-form" onSubmit={onSubmit} className="space-y-4">
           {formError && (
-            <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</div>
+            <div className="rounded-lg bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">
+              {formError}
+            </div>
           )}
           <Field label="Name" required>
             <Input value={name} onChange={(e) => setName(e.target.value)} required />

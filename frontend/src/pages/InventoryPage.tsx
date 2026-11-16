@@ -11,9 +11,10 @@ import {
   Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
 import { DataTable } from '@/components/ui/DataTable'
 import type { Column } from '@/components/ui/DataTable'
+import { FeedList, initials } from '@/components/ui/FeedList'
+import type { FeedColumn } from '@/components/ui/FeedList'
 import { Field, Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
@@ -154,7 +155,7 @@ export function InventoryPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+      <div className="flex flex-wrap gap-1.5 rounded-2xl border border-line bg-white/70 p-1.5 shadow-sm">
         {TABS.map((item) => {
           const Icon = item.icon
           const active = tab === item.id
@@ -165,9 +166,7 @@ export function InventoryPage() {
               onClick={() => setTab(item.id)}
               className={cn(
                 'inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition',
-                active
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-100',
+                active ? 'bg-accent text-white shadow-sm' : 'text-ink-2 hover:bg-line-2',
               )}
             >
               <Icon size={16} />
@@ -225,49 +224,28 @@ function StockTab() {
     void loadLedger(row.item.id)
   }
 
-  const columns: Column<StockRow>[] = [
-    {
-      header: 'Code',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.item.itemCode}</span>,
-    },
-    {
-      header: 'Item',
-      cell: (row) => <span className="font-medium text-slate-800">{row.item.name}</span>,
-    },
-    { header: 'Warehouse', cell: (row) => row.warehouse.name },
+  const columns: FeedColumn<StockRow>[] = [
     {
       header: 'On hand',
+      width: '110px',
       align: 'right',
-      cell: (row) => (
-        <span className="font-semibold text-slate-800">{formatNumber(row.quantity, 2)}</span>
-      ),
+      cell: (row) => <span className="font-semibold text-ink">{formatNumber(row.quantity, 2)}</span>,
     },
     {
       header: 'Avg. cost',
+      width: '120px',
       align: 'right',
-      cell: (row) => <span className="text-slate-500">{formatCurrency(row.averageCost)}</span>,
+      hideOnMobile: true,
+      cell: (row) => <span className="text-ink-2">{formatCurrency(row.averageCost)}</span>,
     },
     {
       header: 'Value',
+      width: '130px',
       align: 'right',
       cell: (row) => (
-        <span className="text-slate-700">
+        <span className="text-ink">
           {formatCurrency(toNumber(row.quantity) * toNumber(row.averageCost))}
         </span>
-      ),
-    },
-    {
-      header: 'Actions',
-      align: 'right',
-      cell: (row) => (
-        <Button
-          variant="outline"
-          size="sm"
-          icon={<ScrollText size={14} />}
-          onClick={() => openLedger(row)}
-        >
-          Ledger
-        </Button>
       ),
     },
   ]
@@ -285,12 +263,12 @@ function StockTab() {
       header: 'Reference',
       cell: (row) =>
         row.referenceType ? (
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-ink-3">
             {row.referenceType}
             {row.referenceId ? ` #${row.referenceId}` : ''}
           </span>
         ) : (
-          <span className="text-slate-400">—</span>
+          <span className="text-ink-3">—</span>
         ),
     },
     {
@@ -298,9 +276,9 @@ function StockTab() {
       align: 'right',
       cell: (row) =>
         toNumber(row.quantity) > 0 ? (
-          <span className="text-emerald-600">{formatNumber(row.quantity, 2)}</span>
+          <span className="text-brand-green">{formatNumber(row.quantity, 2)}</span>
         ) : (
-          <span className="text-slate-300">—</span>
+          <span className="text-ink-3">—</span>
         ),
     },
     {
@@ -308,15 +286,17 @@ function StockTab() {
       align: 'right',
       cell: (row) =>
         toNumber(row.quantity) < 0 ? (
-          <span className="text-red-600">{formatNumber(Math.abs(toNumber(row.quantity)), 2)}</span>
+          <span className="text-brand-crimson">
+            {formatNumber(Math.abs(toNumber(row.quantity)), 2)}
+          </span>
         ) : (
-          <span className="text-slate-300">—</span>
+          <span className="text-ink-3">—</span>
         ),
     },
     {
       header: 'Balance',
       align: 'right',
-      cell: (row) => <span className="font-medium text-slate-800">{formatNumber(row.runningBalance, 2)}</span>,
+      cell: (row) => <span className="font-medium text-ink">{formatNumber(row.runningBalance, 2)}</span>,
     },
   ]
 
@@ -334,7 +314,7 @@ function StockTab() {
           <div className="relative">
             <Search
               size={16}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
             />
             <Input
               className="w-64 pl-9"
@@ -347,25 +327,37 @@ function StockTab() {
             Search
           </Button>
         </form>
-        <span className="text-xs text-slate-400">{formatNumber(total)} stock record(s)</span>
+        <span className="text-xs text-ink-3">{formatNumber(total)} stock record(s)</span>
       </div>
 
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={data?.data ?? []}
-          rowKey={(row) => String(row.id)}
-          loading={loading}
-          error={error}
-          onRetry={reload}
-          emptyTitle="No stock records"
-          emptyDescription="Stock balances appear here once items exist in a warehouse."
-        />
-      </Card>
+      <FeedList
+        rows={data?.data ?? []}
+        rowKey={(row) => String(row.id)}
+        columns={columns}
+        lead={(row) => initials(row.item.name)}
+        title={(row) => row.item.name}
+        subtitle={(row) => `${row.item.itemCode} · ${row.warehouse.name}`}
+        rowAction={(row) => (
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<ScrollText size={14} />}
+            onClick={() => openLedger(row)}
+          >
+            Ledger
+          </Button>
+        )}
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyTitle="No stock records"
+        emptyDescription="Stock balances appear here once items exist in a warehouse."
+        emptyIcon={<Boxes size={20} />}
+      />
 
       {pages > 1 && (
         <div className="flex items-center justify-end gap-3 text-sm">
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-ink-3">
             Page {page} of {pages}
           </span>
           <Button
@@ -417,13 +409,15 @@ function StockTab() {
           {ledgerLoading ? (
             <Spinner label="Loading ledger…" />
           ) : ledgerError ? (
-            <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{ledgerError}</p>
+            <p className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">
+              {ledgerError}
+            </p>
           ) : ledger ? (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
-                  <p className="text-xs text-slate-500">Opening balance</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-800">
+                <div className="rounded-xl border border-line bg-line-2 px-4 py-3">
+                  <p className="text-xs text-ink-3">Opening balance</p>
+                  <p className="mt-1 text-lg font-semibold text-ink">
                     {formatNumber(
                       ledger.closingBalance -
                         ledger.entries.reduce((sum, entry) => sum + toNumber(entry.quantity), 0),
@@ -431,14 +425,14 @@ function StockTab() {
                     )}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-blue-50/60 px-4 py-3">
-                  <p className="text-xs text-slate-500">Closing balance</p>
-                  <p className="mt-1 text-lg font-semibold text-blue-700">
+                <div className="rounded-xl border border-line bg-soft px-4 py-3">
+                  <p className="text-xs text-ink-3">Closing balance</p>
+                  <p className="mt-1 text-lg font-semibold text-accent-2">
                     {formatNumber(ledger.closingBalance, 2)}
                   </p>
                 </div>
               </div>
-              <div className="overflow-hidden rounded-xl border border-slate-200">
+              <div className="overflow-hidden rounded-xl border border-line">
                 <DataTable
                   columns={ledgerColumns}
                   rows={ledger.entries}
@@ -460,36 +454,25 @@ function LowStockTab() {
     '/inventory/low-stock',
   )
 
-  const columns: Column<LowStockRow>[] = [
+  const columns: FeedColumn<LowStockRow>[] = [
     {
-      header: 'Code',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.itemCode}</span>,
-    },
-    {
-      header: 'Item',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
-    },
-    {
-      header: 'Warehouse',
+      header: 'On hand',
+      width: '110px',
+      align: 'right',
       cell: (row) => (
-        <span>
-          {row.warehouse}
-          <span className="ml-1 text-xs text-slate-400">({row.warehouseCode})</span>
-        </span>
+        <span className="font-semibold text-brand-crimson">{formatNumber(row.quantity, 2)}</span>
       ),
     },
     {
-      header: 'On hand',
-      align: 'right',
-      cell: (row) => <span className="font-semibold text-red-600">{formatNumber(row.quantity, 2)}</span>,
-    },
-    {
       header: 'Reorder level',
+      width: '130px',
       align: 'right',
-      cell: (row) => <span className="text-slate-500">{formatNumber(row.reorderLevel, 2)}</span>,
+      hideOnMobile: true,
+      cell: (row) => <span className="text-ink-2">{formatNumber(row.reorderLevel, 2)}</span>,
     },
     {
       header: 'Status',
+      width: '190px',
       align: 'center',
       cell: (row) => (
         <Badge tone="red">
@@ -500,18 +483,20 @@ function LowStockTab() {
   ]
 
   return (
-    <Card>
-      <DataTable
-        columns={columns}
-        rows={data?.data ?? []}
-        rowKey={(row) => String(row.id)}
-        loading={loading}
-        error={error}
-        onRetry={reload}
-        emptyTitle="No low-stock alerts"
-        emptyDescription="Items at or below their reorder level will be listed here."
-      />
-    </Card>
+    <FeedList
+      rows={data?.data ?? []}
+      rowKey={(row) => String(row.id)}
+      columns={columns}
+      lead={(row) => initials(row.name)}
+      title={(row) => row.name}
+      subtitle={(row) => `${row.itemCode} · ${row.warehouse} (${row.warehouseCode})`}
+      loading={loading}
+      error={error}
+      onRetry={reload}
+      emptyTitle="No low-stock alerts"
+      emptyDescription="Items at or below their reorder level will be listed here."
+      emptyIcon={<AlertTriangle size={20} />}
+    />
   )
 }
 
@@ -642,29 +627,26 @@ function AdjustmentsTab() {
     }
   }
 
-  const columns: Column<AdjustmentRecord>[] = [
-    {
-      header: 'Adj #',
-      cell: (row) => <span className="font-medium text-slate-800">{row.adjNumber}</span>,
-    },
-    { header: 'Date', cell: (row) => formatDate(row.adjustmentDate) },
-    {
-      header: 'Warehouse',
-      cell: (row) => row.warehouse?.name ?? `Warehouse #${row.warehouseId}`,
-    },
-    { header: 'Reason', cell: (row) => row.reason ?? <span className="text-slate-400">—</span> },
+  const columns: FeedColumn<AdjustmentRecord>[] = [
+    { header: 'Reason', hideOnMobile: true, cell: (row) => row.reason ?? '—' },
     {
       header: 'Lines',
+      width: '80px',
       align: 'right',
       cell: (row) => formatNumber(row.items.length),
     },
     {
       header: 'Net difference',
+      width: '150px',
       align: 'right',
       cell: (row) => {
         const net = row.items.reduce((sum, line) => sum + toNumber(line.difference), 0)
         return (
-          <span className={net < 0 ? 'text-red-600' : net > 0 ? 'text-emerald-600' : 'text-slate-500'}>
+          <span
+            className={cn(
+              net < 0 ? 'text-brand-crimson' : net > 0 ? 'text-brand-green' : 'text-ink-2',
+            )}
+          >
             {net > 0 ? '+' : ''}
             {formatNumber(net, 2)}
           </span>
@@ -673,28 +655,9 @@ function AdjustmentsTab() {
     },
     {
       header: 'Status',
+      width: '120px',
       align: 'center',
-      cell: (row) => (
-        <Badge tone={row.status === 'approved' ? 'green' : 'amber'}>{row.status}</Badge>
-      ),
-    },
-    {
-      header: 'Actions',
-      align: 'right',
-      cell: (row) =>
-        row.status === 'approved' ? (
-          <span className="text-xs text-slate-400">Approved</span>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            icon={<Check size={14} />}
-            loading={approving === row.id}
-            onClick={() => void onApprove(row)}
-          >
-            Approve
-          </Button>
-        ),
+      cell: (row) => <Badge tone={row.status === 'approved' ? 'green' : 'amber'}>{row.status}</Badge>,
     },
   ]
 
@@ -707,7 +670,7 @@ function AdjustmentsTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-3">
           Stock adjustments created here await approval before balances change.
         </p>
         <Button icon={<Plus size={16} />} onClick={openCreate}>
@@ -715,15 +678,36 @@ function AdjustmentsTab() {
         </Button>
       </div>
 
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={records}
-          rowKey={(row) => row.id}
-          emptyTitle="No adjustments yet"
-          emptyDescription="Create a stock adjustment to reconcile counted quantities."
-        />
-      </Card>
+      <FeedList
+        rows={records}
+        rowKey={(row) => row.id}
+        columns={columns}
+        lead={(row) => initials(row.warehouse?.name ?? `Warehouse #${row.warehouseId}`)}
+        title={(row) => row.adjNumber}
+        subtitle={(row) =>
+          `${formatDate(row.adjustmentDate)} · ${
+            row.warehouse?.name ?? `Warehouse #${row.warehouseId}`
+          }`
+        }
+        rowAction={(row) =>
+          row.status === 'approved' ? (
+            <span className="text-xs text-ink-3">Approved</span>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Check size={14} />}
+              loading={approving === row.id}
+              onClick={() => void onApprove(row)}
+            >
+              Approve
+            </Button>
+          )
+        }
+        emptyTitle="No adjustments yet"
+        emptyDescription="Create a stock adjustment to reconcile counted quantities."
+        emptyIcon={<ClipboardList size={20} />}
+      />
 
       <Modal
         open={open}
@@ -743,7 +727,9 @@ function AdjustmentsTab() {
       >
         <form id="adjustment-form" onSubmit={onSubmit} className="space-y-4">
           {formError && (
-            <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</div>
+            <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">
+              {formError}
+            </div>
           )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -770,7 +756,7 @@ function AdjustmentsTab() {
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink-3">
                 Items
               </span>
               <Button
@@ -788,7 +774,7 @@ function AdjustmentsTab() {
               const counted = line.actualQuantity === '' ? null : toNumber(line.actualQuantity)
               const difference = counted === null ? null : counted - line.systemQty
               return (
-                <div key={line.key} className="rounded-2xl border border-slate-200 p-3">
+                <div key={line.key} className="rounded-2xl border border-line p-3">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px_120px_auto] sm:items-end">
                     <div className="relative">
                       <Field label="Item">
@@ -799,21 +785,21 @@ function AdjustmentsTab() {
                         />
                       </Field>
                       {line.itemId === null && line.search.trim() !== '' && (
-                        <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                        <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-line bg-white shadow-lg">
                           {line.loading ? (
-                            <p className="px-3 py-2 text-xs text-slate-500">Searching…</p>
+                            <p className="px-3 py-2 text-xs text-ink-3">Searching…</p>
                           ) : line.options.length === 0 ? (
-                            <p className="px-3 py-2 text-xs text-slate-500">No matching items</p>
+                            <p className="px-3 py-2 text-xs text-ink-3">No matching items</p>
                           ) : (
                             line.options.map((option) => (
                               <button
                                 key={option.id}
                                 type="button"
                                 onClick={() => pickItem(line, option)}
-                                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-line-2"
                               >
-                                <span className="truncate text-slate-700">{option.name}</span>
-                                <span className="font-mono text-[11px] text-slate-400">
+                                <span className="truncate text-ink">{option.name}</span>
+                                <span className="font-mono text-[11px] text-ink-3">
                                   {option.itemCode}
                                 </span>
                               </button>
@@ -842,26 +828,26 @@ function AdjustmentsTab() {
                           prev.length > 1 ? prev.filter((row) => row.key !== line.key) : prev,
                         )
                       }
-                      className="mb-1 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      className="mb-1 rounded-lg p-2 text-ink-3 hover:bg-[#f9e4e7] hover:text-brand-crimson"
                       aria-label="Remove line"
                     >
                       <Trash2 size={16} />
                     </button>
                   </div>
                   {line.itemId !== null && (
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-ink-3">
                       {line.itemCode} · {line.itemName} —{' '}
                       {difference === null ? (
-                        <span className="text-slate-400">enter counted quantity</span>
+                        <span className="text-ink-3">enter counted quantity</span>
                       ) : (
                         <span
                           className={cn(
                             'font-medium',
                             difference < 0
-                              ? 'text-red-600'
+                              ? 'text-brand-crimson'
                               : difference > 0
-                                ? 'text-emerald-600'
-                                : 'text-slate-500',
+                                ? 'text-brand-green'
+                                : 'text-ink-2',
                           )}
                         >
                           difference {difference > 0 ? '+' : ''}
@@ -875,16 +861,16 @@ function AdjustmentsTab() {
             })}
           </div>
 
-          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-sm">
-            <span className="text-slate-500">Net difference across lines</span>
+          <div className="flex items-center justify-between rounded-2xl border border-line bg-line-2 px-4 py-3 text-sm">
+            <span className="text-ink-3">Net difference across lines</span>
             <span
               className={cn(
                 'font-semibold',
                 differenceTotal < 0
-                  ? 'text-red-600'
+                  ? 'text-brand-crimson'
                   : differenceTotal > 0
-                    ? 'text-emerald-600'
-                    : 'text-slate-700',
+                    ? 'text-brand-green'
+                    : 'text-ink',
               )}
             >
               {differenceTotal > 0 ? '+' : ''}

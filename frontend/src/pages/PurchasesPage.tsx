@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Eye, Plus, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
-import { DataTable } from '@/components/ui/DataTable'
-import type { Column } from '@/components/ui/DataTable'
+import { FeedList, initials } from '@/components/ui/FeedList'
+import type { FeedColumn } from '@/components/ui/FeedList'
 import { Field, Input, Select, Textarea } from '@/components/ui/Input'
+import { DateRangePresets } from '@/components/ui/DateRangePresets'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Feedback'
@@ -37,6 +37,8 @@ interface PurchaseInvoiceRow {
 interface PurchaseInvoiceLine {
   id: string | number
   itemId: number
+  unitId?: number | null
+  conversionFactor?: string
   quantity: string
   unitCost: string
   discountPct: string
@@ -49,7 +51,9 @@ interface PurchaseInvoiceLine {
     name: string
     itemCode: string
     unit: { id: number; name: string; abbreviation: string | null } | null
+    unitConversions?: Item['unitConversions']
   } | null
+  unit?: { id: number; name: string; abbreviation: string | null } | null
 }
 
 interface PurchaseInvoiceDetail extends PurchaseInvoiceRow {
@@ -61,6 +65,11 @@ interface DraftLine {
   itemId: number | null
   name: string
   itemCode: string
+  unitId: number | null
+  unitLabel: string
+  conversionFactor: number
+  basePurchasePrice: string
+  units: Array<{ id: number; name: string; abbreviation: string | null; factor: number }>
   quantity: string
   unitCost: string
   discountPct: string
@@ -116,6 +125,11 @@ function emptyLine(): DraftLine {
     itemId: null,
     name: '',
     itemCode: '',
+    unitId: null,
+    unitLabel: '',
+    conversionFactor: 1,
+    basePurchasePrice: '0',
+    units: [],
     quantity: '1',
     unitCost: '0',
     discountPct: '0',
@@ -197,15 +211,15 @@ function ItemPicker({
 
   if (selected && !query) {
     return (
-      <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2">
+      <div className="flex items-center justify-between gap-2 rounded-xl border border-line bg-white px-3 py-2">
         <div className="min-w-0">
-          <p className="truncate text-sm text-slate-800">{selected.name}</p>
-          <p className="font-mono text-[11px] text-slate-400">{selected.itemCode}</p>
+          <p className="truncate text-sm text-ink">{selected.name}</p>
+          <p className="font-mono text-[11px] text-ink-3">{selected.itemCode}</p>
         </div>
         <button
           type="button"
           onClick={() => onSelect(null)}
-          className="shrink-0 text-xs font-medium text-blue-600 hover:underline"
+          className="shrink-0 text-xs font-medium text-accent hover:underline"
         >
           Change
         </button>
@@ -218,7 +232,7 @@ function ItemPicker({
       <div className="relative">
         <Search
           size={14}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
         />
         <Input
           className="pl-8"
@@ -231,11 +245,11 @@ function ItemPicker({
         />
       </div>
       {open && (
-        <div className="mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-line bg-white shadow-sm">
           {loading ? (
-            <p className="px-3 py-2 text-xs text-slate-400">Searching…</p>
+            <p className="px-3 py-2 text-xs text-ink-3">Searching…</p>
           ) : results.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-slate-400">No items found.</p>
+            <p className="px-3 py-2 text-xs text-ink-3">No items found.</p>
           ) : (
             results.map((item) => (
               <button
@@ -247,15 +261,13 @@ function ItemPicker({
                   setResults([])
                   setOpen(false)
                 }}
-                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-line-2"
               >
                 <span className="min-w-0">
-                  <span className="block truncate text-sm text-slate-800">{item.name}</span>
-                  <span className="block font-mono text-[11px] text-slate-400">
-                    {item.itemCode}
-                  </span>
+                  <span className="block truncate text-sm text-ink">{item.name}</span>
+                  <span className="block font-mono text-[11px] text-ink-3">{item.itemCode}</span>
                 </span>
-                <span className="whitespace-nowrap text-xs text-slate-500">
+                <span className="whitespace-nowrap text-xs text-ink-3">
                   {formatCurrency(item.purchasePrice)}
                 </span>
               </button>
@@ -275,20 +287,15 @@ export function PurchasesPage() {
   const [from, setFrom] = useState(isoDate(monthStart))
   const [to, setTo] = useState(isoDate(today))
   const [supplierFilter, setSupplierFilter] = useState('')
-  const [applied, setApplied] = useState({
-    from: isoDate(monthStart),
-    to: isoDate(today),
-    supplier: '',
-  })
 
   const listUrl = useMemo(() => {
     const params = new URLSearchParams()
-    if (applied.from) params.set('from', applied.from)
-    if (applied.to) params.set('to', applied.to)
-    if (applied.supplier) params.set('supplier', applied.supplier)
+    if (from) params.set('from', from)
+    if (to) params.set('to', to)
+    if (supplierFilter) params.set('supplier', supplierFilter)
     params.set('limit', '100')
     return `/purchases?${params.toString()}`
-  }, [applied])
+  }, [from, to, supplierFilter])
 
   const { data, loading, error, reload } = useFetch<Paginated<PurchaseInvoiceRow>>(listUrl)
   const { data: suppliers } = useFetch<Paginated<Supplier>>('/suppliers?limit=100')
@@ -344,13 +351,41 @@ export function PurchasesPage() {
     setLines((prev) =>
       prev.map((line) => {
         if (line.key !== key) return line
-        if (!item) return { ...line, itemId: null, name: '', itemCode: '' }
+        if (!item) {
+          return {
+            ...line,
+            itemId: null,
+            name: '',
+            itemCode: '',
+            unitId: null,
+            unitLabel: '',
+            conversionFactor: 1,
+            basePurchasePrice: '0',
+            units: [],
+          }
+        }
         const { taxRate, taxRateId } = resolveTax(item)
         return {
           ...line,
           itemId: item.id,
           name: item.name,
           itemCode: item.itemCode,
+          unitId: item.unit?.id ?? null,
+          unitLabel: item.unit?.abbreviation || item.unit?.name || '',
+          conversionFactor: 1,
+          basePurchasePrice: String(toNumber(item.purchasePrice)),
+          units: [
+            ...(item.unit ? [{
+              id: item.unit.id,
+              name: item.unit.name,
+              abbreviation: item.unit.abbreviation,
+              factor: 1,
+            }] : []),
+            ...(item.unitConversions ?? []).map((conversion) => ({
+              ...conversion.unit,
+              factor: toNumber(conversion.factor),
+            })),
+          ],
           unitCost: String(toNumber(item.purchasePrice)),
           taxType: item.taxType,
           taxRate,
@@ -406,6 +441,7 @@ export function PurchasesPage() {
         paymentMethod,
         items: validLines.map((line) => ({
           itemId: line.itemId,
+          unitId: line.unitId ?? undefined,
           quantity: toNumber(line.quantity),
           unitCost: toNumber(line.unitCost),
           discountPct: toNumber(line.discountPct),
@@ -438,40 +474,28 @@ export function PurchasesPage() {
     }
   }
 
-  const columns: Column<PurchaseInvoiceRow>[] = [
-    {
-      header: 'Invoice #',
-      cell: (row) => (
-        <div>
-          <p className="font-medium text-slate-800">{row.invoiceNumber}</p>
-          <p className="text-[11px] text-slate-400">{row.supplierInvoiceRef ?? 'No supplier ref'}</p>
-        </div>
-      ),
-    },
-    {
-      header: 'Date',
-      cell: (row) => <span className="whitespace-nowrap">{formatDate(row.invoiceDate)}</span>,
-    },
-    { header: 'Supplier', cell: (row) => row.supplier?.name ?? '—' },
+  const columns: FeedColumn<PurchaseInvoiceRow>[] = [
     {
       header: 'Total',
+      width: '130px',
       align: 'right',
-      cell: (row) => (
-        <span className="font-semibold text-slate-800">{formatCurrency(row.grandTotal)}</span>
-      ),
+      cell: (row) => <span className="fv font-semibold text-ink">{formatCurrency(row.grandTotal)}</span>,
     },
     {
       header: 'Paid',
+      width: '130px',
       align: 'right',
-      cell: (row) => formatCurrency(row.paidAmount),
+      hideOnMobile: true,
+      cell: (row) => <span className="fv text-ink-2">{formatCurrency(row.paidAmount)}</span>,
     },
     {
       header: 'Outstanding',
+      width: '140px',
       align: 'right',
       cell: (row) => {
         const outstanding = toNumber(row.outstandingAmount)
         return (
-          <span className={outstanding > 0 ? 'font-medium text-red-600' : 'text-slate-500'}>
+          <span className={outstanding > 0 ? 'fv font-medium text-brand-crimson' : 'fv text-ink-3'}>
             {formatCurrency(outstanding)}
           </span>
         )
@@ -479,88 +503,97 @@ export function PurchasesPage() {
     },
     {
       header: 'Status',
+      width: '120px',
       align: 'center',
       cell: (row) => <Badge tone={statusTone(row.status)}>{statusLabel(row.status)}</Badge>,
-    },
-    {
-      header: 'Actions',
-      align: 'right',
-      cell: (row) => (
-        <Button variant="outline" size="sm" icon={<Eye size={14} />} onClick={() => openView(row.id)}>
-          View
-        </Button>
-      ),
     },
   ]
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-lg font-semibold text-slate-800">Purchases</h1>
-        <Button icon={<Plus size={16} />} onClick={openCreate}>
-          New Purchase
-        </Button>
-      </div>
-
-      <Card className="p-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="From">
-            <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-          </Field>
-          <Field label="To">
-            <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-          </Field>
-          <Field label="Supplier">
-            <Select
-              value={supplierFilter}
-              onChange={(event) => setSupplierFilter(event.target.value)}
-            >
-              <option value="">All suppliers</option>
-              {(suppliers?.data ?? []).map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="flex items-end gap-2">
-            <Button
-              type="button"
-              className="flex-1"
-              onClick={() => setApplied({ from, to, supplier: supplierFilter })}
-            >
-              Apply
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                const start = isoDate(new Date(today.getFullYear(), today.getMonth(), 1))
-                const end = isoDate(new Date())
-                setFrom(start)
-                setTo(end)
-                setSupplierFilter('')
-                setApplied({ from: start, to: end, supplier: '' })
-              }}
-            >
-              Clear
-            </Button>
+      <FeedList
+        rows={invoices}
+        rowKey={(row) => row.id}
+        columns={columns}
+        lead={(row) => initials(row.supplier?.name ?? 'Supplier')}
+        title={(row) => row.invoiceNumber}
+        subtitle={(row) =>
+          row.supplierInvoiceRef
+            ? `${row.supplier?.name ?? '—'} · ${row.supplierInvoiceRef}`
+            : row.supplier?.name ?? '—'
+        }
+        onRowClick={(row) => void openView(row.id)}
+        rowAction={(row) => (
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<Eye size={14} />}
+            onClick={() => void openView(row.id)}
+          >
+            View
+          </Button>
+        )}
+        groupByDate={(row) => (row.invoiceDate ? row.invoiceDate.slice(0, 10) : '—')}
+        dayLabel={(groupRows) => {
+          const total = groupRows.reduce((sum, row) => sum + toNumber(row.grandTotal), 0)
+          return {
+            label: formatDate(groupRows[0].invoiceDate),
+            meta: `${groupRows.length} invoice${groupRows.length === 1 ? '' : 's'} · ${formatCurrency(total)}`,
+          }
+        }}
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyTitle="No purchase invoices"
+        emptyDescription="Record a purchase to bring stock into inventory."
+        toolbar={
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="From">
+              <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+            </Field>
+            <Field label="To">
+              <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+            </Field>
+            <Field label="Supplier">
+              <Select
+                value={supplierFilter}
+                onChange={(event) => setSupplierFilter(event.target.value)}
+              >
+                <option value="">All suppliers</option>
+                {(suppliers?.data ?? []).map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="ml-auto flex items-end gap-2">
+              <DateRangePresets
+                from={from}
+                to={to}
+                onPick={(range) => {
+                  setFrom(range.from)
+                  setTo(range.to)
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setFrom(isoDate(new Date(today.getFullYear(), today.getMonth(), 1)))
+                  setTo(isoDate(new Date()))
+                  setSupplierFilter('')
+                }}
+              >
+                Clear
+              </Button>
+              <Button icon={<Plus size={16} />} onClick={openCreate}>
+                New Purchase
+              </Button>
+            </div>
           </div>
-        </div>
-      </Card>
-
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={invoices}
-          rowKey={(row) => row.id}
-          loading={loading}
-          error={error}
-          onRetry={reload}
-          emptyTitle="No purchase invoices"
-          emptyDescription="Record a purchase to bring stock into inventory."
-        />
-      </Card>
+        }
+      />
 
       <Modal
         open={open}
@@ -580,7 +613,9 @@ export function PurchasesPage() {
       >
         <form id="purchase-form" onSubmit={submitPurchase} className="space-y-5">
           {formError && (
-            <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</div>
+            <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">
+              {formError}
+            </div>
           )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -626,9 +661,9 @@ export function PurchasesPage() {
             </Field>
           </div>
 
-          <div className="rounded-2xl border border-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <div className="rounded-2xl border border-line">
+            <div className="flex items-center justify-between border-b border-line-2 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">
                 Items
               </p>
               <Button
@@ -644,7 +679,7 @@ export function PurchasesPage() {
 
             <div className="space-y-3 px-4 py-3">
               {lines.length === 0 ? (
-                <p className="py-2 text-center text-xs text-slate-400">
+                <p className="py-2 text-center text-xs text-ink-3">
                   No lines yet. Click “Add line” to begin.
                 </p>
               ) : (
@@ -653,10 +688,10 @@ export function PurchasesPage() {
                   return (
                     <div
                       key={line.key}
-                      className="grid grid-cols-12 items-end gap-2 rounded-xl border border-slate-200 bg-slate-50/50 p-3"
+                      className="grid grid-cols-12 items-end gap-2 rounded-xl border border-line bg-line-2/50 p-3"
                     >
-                      <div className="col-span-12 sm:col-span-4">
-                        <span className="mb-1 block text-[11px] font-medium text-slate-500">
+                      <div className="col-span-12 sm:col-span-3">
+                        <span className="mb-1 block text-[11px] font-medium text-ink-3">
                           Item
                         </span>
                         <ItemPicker
@@ -665,7 +700,30 @@ export function PurchasesPage() {
                         />
                       </div>
                       <div className="col-span-4 sm:col-span-2">
-                        <span className="mb-1 block text-[11px] font-medium text-slate-500">Qty</span>
+                        <span className="mb-1 block text-[11px] font-medium text-ink-3">UOM</span>
+                        <Select
+                          value={line.unitId ?? ''}
+                          disabled={line.units.length < 2}
+                          onChange={(event) => {
+                            const selected = line.units.find((unit) => unit.id === Number(event.target.value))
+                            if (!selected) return
+                            patchLine(line.key, {
+                              unitId: selected.id,
+                              unitLabel: selected.abbreviation || selected.name,
+                              conversionFactor: selected.factor,
+                              unitCost: String(toNumber(line.basePurchasePrice) * selected.factor),
+                            })
+                          }}
+                        >
+                          {line.units.map((unit) => (
+                            <option key={unit.id} value={unit.id}>
+                              {unit.name}{unit.factor !== 1 ? ` (${unit.factor} base units)` : ''}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="col-span-4 sm:col-span-1">
+                        <span className="mb-1 block text-[11px] font-medium text-ink-3">Qty</span>
                         <Input
                           type="number"
                           step="0.01"
@@ -675,7 +733,7 @@ export function PurchasesPage() {
                         />
                       </div>
                       <div className="col-span-4 sm:col-span-2">
-                        <span className="mb-1 block text-[11px] font-medium text-slate-500">
+                        <span className="mb-1 block text-[11px] font-medium text-ink-3">
                           Unit cost
                         </span>
                         <Input
@@ -687,7 +745,7 @@ export function PurchasesPage() {
                         />
                       </div>
                       <div className="col-span-4 sm:col-span-1">
-                        <span className="mb-1 block text-[11px] font-medium text-slate-500">
+                        <span className="mb-1 block text-[11px] font-medium text-ink-3">
                           Disc %
                         </span>
                         <Input
@@ -702,13 +760,13 @@ export function PurchasesPage() {
                         />
                       </div>
                       <div className="col-span-12 flex items-center justify-between gap-2 sm:col-span-3">
-                        <span className="ml-auto text-sm font-semibold text-slate-800">
+                        <span className="ml-auto text-sm font-semibold text-ink">
                           {formatCurrency(calc.lineTotal)}
                         </span>
                         <button
                           type="button"
                           onClick={() => removeLine(line.key)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          className="rounded-lg p-1.5 text-ink-3 hover:bg-[#f9e4e7] hover:text-brand-crimson"
                           aria-label="Remove line"
                         >
                           <Trash2 size={15} />
@@ -745,21 +803,21 @@ export function PurchasesPage() {
                 </Select>
               </Field>
             </div>
-            <dl className="space-y-1.5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 text-sm">
-              <div className="flex justify-between text-slate-500">
+            <dl className="space-y-1.5 rounded-2xl border border-line bg-line-2/60 p-4 text-sm">
+              <div className="flex justify-between text-ink-3">
                 <dt>Subtotal</dt>
                 <dd>{formatCurrency(totals.subtotal)}</dd>
               </div>
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-ink-3">
                 <dt>Tax</dt>
                 <dd>{formatCurrency(totals.tax)}</dd>
               </div>
-              <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-900">
+              <div className="flex justify-between border-t border-line pt-2 text-base font-semibold text-ink">
                 <dt>Grand total</dt>
                 <dd>{formatCurrency(totals.grandTotal)}</dd>
               </div>
               {toNumber(paidAmount) > 0 && (
-                <div className="flex justify-between text-xs text-red-600">
+                <div className="flex justify-between text-xs text-brand-crimson">
                   <dt>Outstanding</dt>
                   <dd>{formatCurrency(Math.max(0, totals.grandTotal - toNumber(paidAmount)))}</dd>
                 </div>
@@ -783,57 +841,49 @@ export function PurchasesPage() {
         {viewLoading ? (
           <Spinner label="Loading invoice…" />
         ) : viewError ? (
-          <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{viewError}</p>
+          <p className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">{viewError}</p>
         ) : viewDetail ? (
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-slate-800">{viewDetail.supplier?.name}</p>
-                <p className="text-xs text-slate-500">
+                <p className="text-sm font-semibold text-ink">{viewDetail.supplier?.name}</p>
+                <p className="text-xs text-ink-3">
                   {formatDate(viewDetail.invoiceDate)}
                   {viewDetail.dueDate ? ` · Due ${formatDate(viewDetail.dueDate)}` : ''}
                 </p>
                 {viewDetail.supplierInvoiceRef && (
-                  <p className="text-xs text-slate-400">Ref: {viewDetail.supplierInvoiceRef}</p>
+                  <p className="text-xs text-ink-3">Ref: {viewDetail.supplierInvoiceRef}</p>
                 )}
               </div>
               <Badge tone={statusTone(viewDetail.status)}>{statusLabel(viewDetail.status)}</Badge>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Item
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Qty
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Unit cost
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Tax
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Line total
-                    </th>
+            <div className="overflow-x-auto rounded-xl border border-line">
+              <table className="min-w-full text-[13px]">
+                <thead>
+                  <tr className="border-b border-line">
+                    <th className="px-3 py-2 text-left text-[12.5px] font-medium text-ink-3">Item</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Qty</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Unit cost</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Tax</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Line total</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {viewDetail.items.map((line) => (
-                    <tr key={line.id}>
+                    <tr key={line.id} className="border-t border-line-2">
                       <td className="px-3 py-2">
-                        <p className="text-slate-800">{line.item?.name ?? `Item #${line.itemId}`}</p>
-                        <p className="font-mono text-[11px] text-slate-400">
+                        <p className="text-ink">{line.item?.name ?? `Item #${line.itemId}`}</p>
+                        <p className="font-mono text-[11px] text-ink-3">
                           {line.item?.itemCode ?? ''}
                         </p>
                       </td>
-                      <td className="px-3 py-2 text-right">{formatNumber(line.quantity, 2)}</td>
-                      <td className="px-3 py-2 text-right">{formatCurrency(line.unitCost)}</td>
-                      <td className="px-3 py-2 text-right">{formatCurrency(line.taxAmount)}</td>
-                      <td className="px-3 py-2 text-right font-medium text-slate-800">
+                      <td className="px-3 py-2 text-right text-ink-2">
+                        {formatNumber(line.quantity, 2)} {line.unit?.abbreviation || line.unit?.name || line.item?.unit?.abbreviation || line.item?.unit?.name || ''}
+                      </td>
+                      <td className="px-3 py-2 text-right text-ink-2">{formatCurrency(line.unitCost)}</td>
+                      <td className="px-3 py-2 text-right text-ink-2">{formatCurrency(line.taxAmount)}</td>
+                      <td className="px-3 py-2 text-right font-medium text-ink">
                         {formatCurrency(line.lineTotal)}
                       </td>
                     </tr>
@@ -843,24 +893,24 @@ export function PurchasesPage() {
             </div>
 
             <dl className="space-y-1.5 text-sm">
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-ink-3">
                 <dt>Subtotal</dt>
                 <dd>{formatCurrency(viewDetail.subtotal)}</dd>
               </div>
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-ink-3">
                 <dt>Tax</dt>
                 <dd>{formatCurrency(viewDetail.taxAmount)}</dd>
               </div>
-              <div className="flex justify-between border-t border-slate-200 pt-1.5 text-base font-semibold text-slate-900">
+              <div className="flex justify-between border-t border-line pt-1.5 text-base font-semibold text-ink">
                 <dt>Grand total</dt>
                 <dd>{formatCurrency(viewDetail.grandTotal)}</dd>
               </div>
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-ink-3">
                 <dt>Paid</dt>
                 <dd>{formatCurrency(viewDetail.paidAmount)}</dd>
               </div>
               {toNumber(viewDetail.outstandingAmount) > 0 && (
-                <div className="flex justify-between text-red-600">
+                <div className="flex justify-between text-brand-crimson">
                   <dt>Outstanding</dt>
                   <dd>{formatCurrency(viewDetail.outstandingAmount)}</dd>
                 </div>
@@ -868,7 +918,7 @@ export function PurchasesPage() {
             </dl>
 
             {viewDetail.notes && (
-              <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <p className="rounded-xl bg-line-2 px-3 py-2 text-xs text-ink-2">
                 {viewDetail.notes}
               </p>
             )}

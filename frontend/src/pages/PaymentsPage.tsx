@@ -9,10 +9,11 @@ import {
   Wallet,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card, StatCard } from '@/components/ui/Card'
-import { DataTable } from '@/components/ui/DataTable'
-import type { Column } from '@/components/ui/DataTable'
+import { StatCard } from '@/components/ui/Card'
+import { FeedList, initials } from '@/components/ui/FeedList'
+import type { FeedColumn } from '@/components/ui/FeedList'
 import { Field, Input, Select, Textarea } from '@/components/ui/Input'
+import { DateRangePresets } from '@/components/ui/DateRangePresets'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Feedback'
@@ -133,22 +134,21 @@ export function PaymentsPage() {
   const [to, setTo] = useState('')
   const [partyTypeFilter, setPartyTypeFilter] = useState('')
   const [partyFilterId, setPartyFilterId] = useState('')
-  const [applied, setApplied] = useState({ from: '', to: '', partyType: '', partyId: '' })
 
   const paymentsUrl = useMemo(() => {
     const params = new URLSearchParams()
-    if (applied.from) params.set('from', applied.from)
-    if (applied.to) params.set('to', applied.to)
-    if (applied.partyType) {
-      params.set('partyType', applied.partyType)
-      if (applied.partyId) {
-        if (applied.partyType === 'customer') params.set('customerId', applied.partyId)
-        else params.set('supplierId', applied.partyId)
+    if (from) params.set('from', from)
+    if (to) params.set('to', to)
+    if (partyTypeFilter) {
+      params.set('partyType', partyTypeFilter)
+      if (partyFilterId) {
+        if (partyTypeFilter === 'customer') params.set('customerId', partyFilterId)
+        else params.set('supplierId', partyFilterId)
       }
     }
     params.set('limit', '100')
     return `/payments?${params.toString()}`
-  }, [applied])
+  }, [from, to, partyTypeFilter, partyFilterId])
 
   const { data, loading, error, reload } = useFetch<Paginated<PaymentRecord>>(paymentsUrl)
   const receivables = useFetch<{ data: OutstandingCustomerRow[]; total: number }>(
@@ -355,122 +355,92 @@ export function PaymentsPage() {
     .filter((payment) => payment.partyType === 'supplier')
     .reduce((sum, payment) => sum + toNumber(payment.amount), 0)
 
-  const paymentColumns: Column<PaymentRecord>[] = [
-    {
-      header: 'Date',
-      cell: (row) => <span className="whitespace-nowrap">{formatDate(row.paymentDate)}</span>,
-    },
-    {
-      header: 'Party',
-      cell: (row) => (
-        <div>
-          <p className="font-medium text-slate-800">
-            {row.customer?.name ?? row.supplier?.name ?? '—'}
-          </p>
-          <p className="font-mono text-[11px] text-slate-400">{row.paymentNumber}</p>
-        </div>
-      ),
-    },
+  const paymentColumns: FeedColumn<PaymentRecord>[] = [
     {
       header: 'Type',
+      width: '110px',
+      align: 'center',
       cell: (row) => (
         <Badge tone={row.partyType === 'supplier' ? 'indigo' : 'green'}>
           {row.partyType === 'supplier' ? 'Payment' : 'Receipt'}
         </Badge>
       ),
     },
-    { header: 'Method', cell: (row) => methodLabel(row.paymentMethod) },
-    { header: 'Reference', cell: (row) => row.transactionRef ?? '—' },
+    {
+      header: 'Method',
+      width: '130px',
+      hideOnMobile: true,
+      cell: (row) => <span className="fv capitalize text-ink-2">{methodLabel(row.paymentMethod)}</span>,
+    },
+    {
+      header: 'Reference',
+      width: '160px',
+      hideOnMobile: true,
+      cell: (row) => <span className="fv text-ink-3">{row.transactionRef ?? '—'}</span>,
+    },
     {
       header: 'Amount',
+      width: '140px',
       align: 'right',
       cell: (row) => (
         <span
           className={cn(
-            'font-semibold',
-            row.partyType === 'supplier' ? 'text-amber-600' : 'text-emerald-600',
+            'fv font-semibold',
+            row.partyType === 'supplier' ? 'text-brand-amber' : 'text-brand-green',
           )}
         >
           {formatCurrency(row.amount)}
         </span>
       ),
     },
+  ]
+
+  const receivableColumns: FeedColumn<OutstandingCustomerRow>[] = [
     {
-      header: 'Actions',
+      header: 'Phone',
+      width: '150px',
+      hideOnMobile: true,
+      cell: (row) => <span className="fv text-ink-2">{row.phone ?? '—'}</span>,
+    },
+    {
+      header: 'Open invoices',
+      width: '120px',
+      align: 'right',
+      cell: (row) => <span className="fv">{formatNumber(row.invoiceCount)}</span>,
+    },
+    {
+      header: 'Outstanding',
+      width: '150px',
       align: 'right',
       cell: (row) => (
-        <Button variant="outline" size="sm" icon={<Eye size={14} />} onClick={() => openView(row.id)}>
-          View
-        </Button>
+        <span className="fv font-semibold text-brand-crimson">
+          {formatCurrency(row.outstanding)}
+        </span>
       ),
     },
   ]
 
-  const receivableColumns: Column<OutstandingCustomerRow>[] = [
+  const payableColumns: FeedColumn<OutstandingSupplierRow>[] = [
     {
-      header: 'Customer',
-      cell: (row) => (
-        <div>
-          <p className="font-medium text-slate-800">{row.name}</p>
-          <p className="font-mono text-[11px] text-slate-400">{row.customerCode ?? '—'}</p>
-        </div>
-      ),
+      header: 'Phone',
+      width: '150px',
+      hideOnMobile: true,
+      cell: (row) => <span className="fv text-ink-2">{row.phone ?? '—'}</span>,
     },
-    { header: 'Phone', cell: (row) => row.phone ?? '—' },
-    { header: 'Open invoices', align: 'right', cell: (row) => formatNumber(row.invoiceCount) },
+    {
+      header: 'Open invoices',
+      width: '120px',
+      align: 'right',
+      cell: (row) => <span className="fv">{formatNumber(row.invoiceCount)}</span>,
+    },
     {
       header: 'Outstanding',
+      width: '150px',
       align: 'right',
       cell: (row) => (
-        <span className="font-semibold text-red-600">{formatCurrency(row.outstanding)}</span>
-      ),
-    },
-    {
-      header: 'Actions',
-      align: 'right',
-      cell: (row) => (
-        <Button
-          size="sm"
-          icon={<HandCoins size={14} />}
-          onClick={() => openPayment('customer', String(row.customerId))}
-        >
-          Receive payment
-        </Button>
-      ),
-    },
-  ]
-
-  const payableColumns: Column<OutstandingSupplierRow>[] = [
-    {
-      header: 'Supplier',
-      cell: (row) => (
-        <div>
-          <p className="font-medium text-slate-800">{row.name}</p>
-          <p className="font-mono text-[11px] text-slate-400">{row.supplierCode ?? '—'}</p>
-        </div>
-      ),
-    },
-    { header: 'Phone', cell: (row) => row.phone ?? '—' },
-    { header: 'Open invoices', align: 'right', cell: (row) => formatNumber(row.invoiceCount) },
-    {
-      header: 'Outstanding',
-      align: 'right',
-      cell: (row) => (
-        <span className="font-semibold text-red-600">{formatCurrency(row.outstanding)}</span>
-      ),
-    },
-    {
-      header: 'Actions',
-      align: 'right',
-      cell: (row) => (
-        <Button
-          variant="outline"
-          size="sm"
-          icon={<HandCoins size={14} />}
-          onClick={() => openPayment('supplier', String(row.supplierId))}
-        >
-          Make payment
-        </Button>
+        <span className="fv font-semibold text-brand-crimson">
+          {formatCurrency(row.outstanding)}
+        </span>
       ),
     },
   ]
@@ -484,7 +454,7 @@ export function PaymentsPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+        <div className="flex flex-wrap items-center gap-1 rounded-xl border border-line bg-white/70 p-1 shadow-sm">
           {tabs.map((entry) => (
             <button
               key={entry.id}
@@ -492,9 +462,7 @@ export function PaymentsPage() {
               onClick={() => setTab(entry.id)}
               className={cn(
                 'rounded-lg px-4 py-1.5 text-sm font-medium transition-colors',
-                tab === entry.id
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-100',
+                tab === entry.id ? 'bg-accent text-white shadow-sm' : 'text-ink-2 hover:bg-line-2 hover:text-ink',
               )}
             >
               {entry.label}
@@ -532,109 +500,152 @@ export function PaymentsPage() {
             />
           </div>
 
-          <Card className="p-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-              <Field label="From">
-                <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-              </Field>
-              <Field label="To">
-                <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-              </Field>
-              <Field label="Party type">
-                <Select
-                  value={partyTypeFilter}
-                  onChange={(event) => {
-                    setPartyTypeFilter(event.target.value)
-                    setPartyFilterId('')
-                  }}
-                >
-                  <option value="">All parties</option>
-                  <option value="customer">Customer</option>
-                  <option value="supplier">Supplier</option>
-                </Select>
-              </Field>
-              <Field label="Party">
-                <Select
-                  value={partyFilterId}
-                  disabled={!partyTypeFilter}
-                  onChange={(event) => setPartyFilterId(event.target.value)}
-                >
-                  <option value="">All</option>
-                  {filterPartyOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <div className="flex items-end gap-2">
-                <Button
-                  type="button"
-                  className="flex-1"
-                  onClick={() => setApplied({ from, to, partyType: partyTypeFilter, partyId: partyFilterId })}
-                >
-                  Apply
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setFrom('')
-                    setTo('')
-                    setPartyTypeFilter('')
-                    setPartyFilterId('')
-                    setApplied({ from: '', to: '', partyType: '', partyId: '' })
-                  }}
-                >
-                  Clear
-                </Button>
+          <FeedList
+            rows={payments}
+            rowKey={(row) => row.id}
+            columns={paymentColumns}
+            lead={(row) => initials(row.customer?.name ?? row.supplier?.name ?? '—')}
+            title={(row) => row.customer?.name ?? row.supplier?.name ?? '—'}
+            subtitle={(row) => row.paymentNumber}
+            onRowClick={(row) => void openView(row.id)}
+            rowAction={(row) => (
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<Eye size={14} />}
+                onClick={() => void openView(row.id)}
+              >
+                View
+              </Button>
+            )}
+            groupByDate={(row) => (row.paymentDate ? row.paymentDate.slice(0, 10) : '—')}
+            dayLabel={(groupRows) => {
+              const total = groupRows.reduce((sum, row) => sum + toNumber(row.amount), 0)
+              return {
+                label: formatDate(groupRows[0].paymentDate),
+                meta: `${groupRows.length} payment${groupRows.length === 1 ? '' : 's'} · ${formatCurrency(total)}`,
+              }
+            }}
+            loading={loading}
+            error={error}
+            onRetry={reload}
+            emptyTitle="No payments recorded"
+            emptyDescription="Record a receipt from a customer or a payment to a supplier."
+            emptyIcon={<HandCoins size={20} />}
+            toolbar={
+              <div className="flex flex-wrap items-end gap-3">
+                <Field label="From">
+                  <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+                </Field>
+                <Field label="To">
+                  <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+                </Field>
+                <Field label="Party type">
+                  <Select
+                    value={partyTypeFilter}
+                    onChange={(event) => {
+                      setPartyTypeFilter(event.target.value)
+                      setPartyFilterId('')
+                    }}
+                  >
+                    <option value="">All parties</option>
+                    <option value="customer">Customer</option>
+                    <option value="supplier">Supplier</option>
+                  </Select>
+                </Field>
+                <Field label="Party">
+                  <Select
+                    value={partyFilterId}
+                    disabled={!partyTypeFilter}
+                    onChange={(event) => setPartyFilterId(event.target.value)}
+                  >
+                    <option value="">All</option>
+                    {filterPartyOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <div className="ml-auto flex items-end gap-2">
+                  <DateRangePresets
+                    from={from}
+                    to={to}
+                    onPick={(range) => {
+                      setFrom(range.from)
+                      setTo(range.to)
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setFrom('')
+                      setTo('')
+                      setPartyTypeFilter('')
+                      setPartyFilterId('')
+                    }}
+                  >
+                    Clear
+                  </Button>
+                </div>
               </div>
-            </div>
-          </Card>
-
-          <Card>
-            <DataTable
-              columns={paymentColumns}
-              rows={payments}
-              rowKey={(row) => row.id}
-              loading={loading}
-              error={error}
-              onRetry={reload}
-              emptyTitle="No payments recorded"
-              emptyDescription="Record a receipt from a customer or a payment to a supplier."
-            />
-          </Card>
+            }
+          />
         </>
       )}
 
       {tab === 'receivables' && (
-        <Card>
-          <DataTable
-            columns={receivableColumns}
-            rows={receivables.data?.data ?? []}
-            rowKey={(row) => row.customerId}
-            loading={receivables.loading}
-            error={receivables.error}
-            onRetry={receivables.reload}
-            emptyTitle="No outstanding receivables"
-            emptyDescription="Customers with unpaid invoices will appear here."
-          />
-        </Card>
+        <FeedList
+          rows={receivables.data?.data ?? []}
+          rowKey={(row) => row.customerId}
+          columns={receivableColumns}
+          lead={(row) => initials(row.name)}
+          title={(row) => row.name}
+          subtitle={(row) => row.customerCode ?? '—'}
+          rowAction={(row) => (
+            <Button
+              size="sm"
+              icon={<HandCoins size={14} />}
+              onClick={() => openPayment('customer', String(row.customerId))}
+            >
+              Receive payment
+            </Button>
+          )}
+          loading={receivables.loading}
+          error={receivables.error}
+          onRetry={receivables.reload}
+          emptyTitle="No outstanding receivables"
+          emptyDescription="Customers with unpaid invoices will appear here."
+          emptyIcon={<HandCoins size={20} />}
+        />
       )}
 
       {tab === 'payables' && (
-        <Card>
-          <DataTable
-            columns={payableColumns}
-            rows={payables.data?.data ?? []}
-            rowKey={(row) => row.supplierId}
-            loading={payables.loading}
-            error={payables.error}
-            onRetry={payables.reload}
-            emptyTitle="No outstanding payables"
-            emptyDescription="Suppliers with unpaid purchase invoices will appear here."
-          />
-        </Card>
+        <FeedList
+          rows={payables.data?.data ?? []}
+          rowKey={(row) => row.supplierId}
+          columns={payableColumns}
+          lead={(row) => initials(row.name)}
+          title={(row) => row.name}
+          subtitle={(row) => row.supplierCode ?? '—'}
+          rowAction={(row) => (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<HandCoins size={14} />}
+              onClick={() => openPayment('supplier', String(row.supplierId))}
+            >
+              Make payment
+            </Button>
+          )}
+          loading={payables.loading}
+          error={payables.error}
+          onRetry={payables.reload}
+          emptyTitle="No outstanding payables"
+          emptyDescription="Suppliers with unpaid purchase invoices will appear here."
+          emptyIcon={<HandCoins size={20} />}
+        />
       )}
 
       <Modal
@@ -655,12 +666,14 @@ export function PaymentsPage() {
       >
         <form id="payment-form" onSubmit={submitPayment} className="space-y-5">
           {formError && (
-            <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</div>
+            <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">
+              {formError}
+            </div>
           )}
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-slate-600">Party type</span>
-            <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <span className="text-xs font-medium text-ink-2">Party type</span>
+            <div className="flex items-center gap-1 rounded-xl border border-line bg-line-2 p-1">
               {(['customer', 'supplier'] as const).map((value) => (
                 <button
                   key={value}
@@ -669,8 +682,8 @@ export function PaymentsPage() {
                   className={cn(
                     'rounded-lg px-4 py-1.5 text-xs font-medium capitalize transition-colors',
                     partyType === value
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-600 hover:bg-white',
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-ink-2 hover:bg-white',
                   )}
                 >
                   {value}
@@ -734,27 +747,27 @@ export function PaymentsPage() {
             </Field>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+          <div className="rounded-2xl border border-line bg-line-2/60 p-4">
             <div className="mb-3 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">
                 Allocate to invoices
               </p>
               {selectedAllocationTotal > 0 && (
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-ink-3">
                   Allocated: {formatCurrency(selectedAllocationTotal)}
                 </span>
               )}
             </div>
 
             {!partyId ? (
-              <p className="py-2 text-xs text-slate-400">
+              <p className="py-2 text-xs text-ink-3">
                 Select a {partyType === 'customer' ? 'customer' : 'supplier'} to load their
                 outstanding invoices.
               </p>
             ) : loadingInvoices ? (
               <Spinner label="Loading invoices…" />
             ) : allocations.length === 0 ? (
-              <p className="py-2 text-xs text-slate-400">
+              <p className="py-2 text-xs text-ink-3">
                 This party has no outstanding invoices. The payment will be recorded on account.
               </p>
             ) : (
@@ -762,19 +775,19 @@ export function PaymentsPage() {
                 {allocations.map((line) => (
                   <li
                     key={line.key}
-                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                    className="flex items-center gap-3 rounded-xl border border-line bg-white px-3 py-2"
                   >
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
+                      className="h-4 w-4 rounded border-line-2 text-accent focus:ring-accent/30"
                       checked={line.selected}
                       onChange={() => toggleAllocation(line.key)}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-800">
+                      <p className="truncate text-sm font-medium text-ink">
                         {line.invoiceNumber}
                       </p>
-                      <p className="text-[11px] text-slate-400">
+                      <p className="text-[11px] text-ink-3">
                         {formatDate(line.invoiceDate)} · Outstanding {formatCurrency(line.outstanding)}
                       </p>
                     </div>
@@ -786,7 +799,7 @@ export function PaymentsPage() {
                       disabled={!line.selected}
                       value={line.amount}
                       onChange={(event) => setAllocationAmount(line.key, event.target.value)}
-                      className="h-8 w-28 rounded-lg border border-slate-300 px-2 text-right text-xs disabled:bg-slate-50 disabled:text-slate-400"
+                      className="h-8 w-28 rounded-lg border border-line px-2 text-right text-xs text-ink disabled:bg-line-2 disabled:text-ink-3"
                     />
                   </li>
                 ))}
@@ -810,69 +823,69 @@ export function PaymentsPage() {
         {viewLoading ? (
           <Spinner label="Loading payment…" />
         ) : viewError ? (
-          <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{viewError}</p>
+          <p className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">{viewError}</p>
         ) : viewDetail ? (
           <div className="space-y-4 text-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-semibold text-slate-800">
+                <p className="font-semibold text-ink">
                   {viewDetail.customer?.name ?? viewDetail.supplier?.name ?? '—'}
                 </p>
-                <p className="text-xs text-slate-500">{formatDate(viewDetail.paymentDate)}</p>
+                <p className="text-xs text-ink-3">{formatDate(viewDetail.paymentDate)}</p>
               </div>
               <Badge tone={statusTone(viewDetail.paymentStatus)}>
                 {statusLabel(viewDetail.paymentStatus)}
               </Badge>
             </div>
 
-            <dl className="grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-xs">
+            <dl className="grid grid-cols-2 gap-3 rounded-xl border border-line bg-line-2/60 p-3 text-xs">
               <div>
-                <dt className="text-slate-500">Type</dt>
-                <dd className="font-medium text-slate-800">
+                <dt className="text-ink-3">Type</dt>
+                <dd className="font-medium text-ink">
                   {viewDetail.partyType === 'supplier' ? 'Payment' : 'Receipt'}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-500">Method</dt>
-                <dd className="font-medium text-slate-800">{methodLabel(viewDetail.paymentMethod)}</dd>
+                <dt className="text-ink-3">Method</dt>
+                <dd className="font-medium text-ink">{methodLabel(viewDetail.paymentMethod)}</dd>
               </div>
               <div>
-                <dt className="text-slate-500">Reference</dt>
-                <dd className="font-medium text-slate-800">{viewDetail.transactionRef ?? '—'}</dd>
+                <dt className="text-ink-3">Reference</dt>
+                <dd className="font-medium text-ink">{viewDetail.transactionRef ?? '—'}</dd>
               </div>
               <div>
-                <dt className="text-slate-500">Amount</dt>
-                <dd className="font-medium text-slate-800">{formatCurrency(viewDetail.amount)}</dd>
+                <dt className="text-ink-3">Amount</dt>
+                <dd className="font-medium text-ink">{formatCurrency(viewDetail.amount)}</dd>
               </div>
             </dl>
 
             {viewDetail.narration && (
-              <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <p className="rounded-xl bg-line-2 px-3 py-2 text-xs text-ink-2">
                 {viewDetail.narration}
               </p>
             )}
 
             <div>
-              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3">
                 <CheckCircle2 size={14} /> Allocations
               </p>
               {viewDetail.allocations.length === 0 ? (
-                <p className="text-xs text-slate-400">No invoice allocations recorded.</p>
+                <p className="text-xs text-ink-3">No invoice allocations recorded.</p>
               ) : (
-                <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                <ul className="divide-y divide-line-2 rounded-xl border border-line">
                   {viewDetail.allocations.map((allocation) => (
                     <li key={allocation.id} className="flex items-center justify-between px-3 py-2">
                       <div>
-                        <p className="text-xs font-medium text-slate-800">
+                        <p className="text-xs font-medium text-ink">
                           {allocation.salesInvoice?.invoiceNumber ??
                             allocation.purchaseInvoice?.invoiceNumber ??
                             '—'}
                         </p>
-                        <p className="text-[11px] capitalize text-slate-400">
+                        <p className="text-[11px] capitalize text-ink-3">
                           {allocation.invoiceType} invoice
                         </p>
                       </div>
-                      <span className="text-xs font-semibold text-slate-800">
+                      <span className="text-xs font-semibold text-ink">
                         {formatCurrency(allocation.allocatedAmount)}
                       </span>
                     </li>

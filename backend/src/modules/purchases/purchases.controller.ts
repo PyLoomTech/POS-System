@@ -9,6 +9,7 @@ import { calculateLineTax, calculateInvoiceTotals } from '../../utils/tax';
 
 const lineSchema = z.object({
   itemId: z.number().int().positive(),
+  unitId: z.number().int().positive().optional(),
   quantity: z.number().positive(),
   unitCost: z.number().min(0),
   discountPct: z.number().min(0).max(100).default(0),
@@ -44,11 +45,33 @@ export async function createPurchaseInvoice(req: AuthRequest, res: Response, nex
     const invoiceNumber = await getNextNumber('PURCHASE_INV');
 
     const result = await prisma.$transaction(async (tx) => {
-      const lineCalcs = data.items.map(li => ({
-        li,
-        calc: calculateLineTax({ quantity: li.quantity, unitPrice: li.unitCost,
-          discountPct: li.discountPct, taxType: li.taxType, taxRate: li.taxRate }),
-      }));
+      const lineCalcs = [];
+      for (const li of data.items) {
+        const item = await tx.item.findUnique({
+          where: { id: li.itemId },
+          include: { unitConversions: true },
+        });
+        if (!item) throw createError(`Item ID ${li.itemId} not found.`, 404);
+        const unitId = li.unitId ?? item.unitId;
+        const conversionFactor = unitId === item.unitId
+          ? 1
+          : Number(item.unitConversions.find((conversion) => conversion.unitId === unitId)?.factor ?? 0);
+        if (conversionFactor <= 0) {
+          throw createError(`Selected UOM is not configured for '${item.name}'.`, 400);
+        }
+        const baseQuantity = new Decimal(li.quantity).times(conversionFactor);
+        const baseUnitCost = new Decimal(li.unitCost).dividedBy(conversionFactor);
+        lineCalcs.push({
+          li,
+          item,
+          unitId,
+          conversionFactor,
+          baseQuantity,
+          baseUnitCost,
+          calc: calculateLineTax({ quantity: li.quantity, unitPrice: li.unitCost,
+            discountPct: li.discountPct, taxType: li.taxType, taxRate: li.taxRate }),
+        });
+      }
       const totals = calculateInvoiceTotals(lineCalcs.map(l => l.calc));
       const outstanding = totals.grandTotal.minus(data.paidAmount);
 
@@ -72,11 +95,13 @@ export async function createPurchaseInvoice(req: AuthRequest, res: Response, nex
         },
       });
 
-      for (const { li, calc } of lineCalcs) {
+      for (const { li, unitId, conversionFactor, baseQuantity, baseUnitCost, calc } of lineCalcs) {
         await tx.purchaseInvoiceItem.create({
           data: {
             invoiceId: invoice.id,
             itemId: li.itemId,
+            unitId,
+            conversionFactor,
             quantity: li.quantity,
             unitCost: li.unitCost,
             discountPct: li.discountPct,
@@ -97,25 +122,25 @@ export async function createPurchaseInvoice(req: AuthRequest, res: Response, nex
         if (balance) {
           const currentQty = new Decimal(balance.quantity.toString());
           const currentCost = new Decimal(balance.averageCost.toString());
-          const newQty = new Decimal(li.quantity);
-          const newCost = new Decimal(li.unitCost);
+          const newQty = baseQuantity;
+          const newCost = baseUnitCost;
           const totalQty = currentQty.plus(newQty);
           const newWAC = totalQty.isZero() ? newCost
             : currentQty.times(currentCost).plus(newQty.times(newCost)).dividedBy(totalQty);
 
           await tx.stockBalance.update({
             where: { id: balance.id },
-            data: { quantity: { increment: li.quantity }, averageCost: newWAC.toDecimalPlaces(4).toNumber() },
+            data: { quantity: { increment: baseQuantity.toNumber() }, averageCost: newWAC.toDecimalPlaces(4).toNumber() },
           });
         } else {
           await tx.stockBalance.create({
-            data: { itemId: li.itemId, warehouseId: data.warehouseId, quantity: li.quantity, averageCost: li.unitCost },
+            data: { itemId: li.itemId, warehouseId: data.warehouseId, quantity: baseQuantity.toNumber(), averageCost: baseUnitCost.toDecimalPlaces(4).toNumber() },
           });
         }
 
         await tx.inventoryMovement.create({
           data: { itemId: li.itemId, warehouseId: data.warehouseId, movementType: 'purchase',
-            quantity: li.quantity, unitCost: li.unitCost, referenceType: 'purchase_invoice',
+            quantity: baseQuantity.toNumber(), unitCost: baseUnitCost.toDecimalPlaces(4).toNumber(), referenceType: 'purchase_invoice',
             referenceId: invoice.id, narration: `Purchase: ${invoiceNumber}`, createdBy: req.user?.id },
         });
       }
@@ -183,7 +208,10 @@ export async function getPurchaseInvoice(req: Request, res: Response, next: Next
     const id = BigInt(String(req.params.id));
     const invoice = await prisma.purchaseInvoice.findUnique({
       where: { id },
-      include: { supplier: true, items: { include: { item: { include: { unit: true } } } } },
+      include: {
+        supplier: true,
+        items: { include: { item: { include: { unit: true } }, unit: true } },
+      },
     });
     if (!invoice) return next(createError('Purchase invoice not found.', 404));
     return res.json(invoice);

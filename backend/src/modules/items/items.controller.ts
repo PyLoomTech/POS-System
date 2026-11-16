@@ -19,8 +19,18 @@ const itemSchema = z.object({
   unitId: z.number().int().positive(),
   taxRateId: z.number().int().positive().optional().nullable(),
   taxType: z.enum(['taxable_exclusive', 'taxable_inclusive', 'non_taxable', 'zero_rated', 'exempt']).default('taxable_exclusive'),
+  isStockItem: z.boolean().default(true),
   purchasePrice: z.number().min(0).default(0),
   sellingPrice: z.number().min(0).default(0),
+  unitConversions: z.array(z.object({
+    unitId: z.number().int().positive(),
+    factor: z.number().positive(),
+  })).optional(),
+  priceListPrices: z.array(z.object({
+    priceListId: z.number().int().positive(),
+    price: z.number().min(0),
+    unitId: z.number().int().positive().nullable().optional(),
+  })).optional(),
   minimumStock: z.number().min(0).default(0),
   reorderLevel: z.number().min(0).default(0),
 });
@@ -29,10 +39,109 @@ const include = {
   category: { select: { id: true, name: true } },
   brand: { select: { id: true, name: true } },
   unit: { select: { id: true, name: true, abbreviation: true } },
+  unitConversions: {
+    include: { unit: { select: { id: true, name: true, abbreviation: true } } },
+  },
+  priceListPrices: {
+    where: { isActive: true },
+    select: {
+      id: true,
+      priceListId: true,
+      unitId: true,
+      price: true,
+      unit: { select: { id: true, name: true, abbreviation: true } },
+      priceList: { select: { id: true, name: true, code: true } },
+    },
+  },
   stockBalances: {
     include: { warehouse: { select: { id: true, name: true, code: true } } }
   },
 };
+
+type PriceListPriceInput = { priceListId: number; price: number; unitId?: number | null };
+type UnitConversionInput = { unitId: number; factor: number };
+
+async function validatePriceLists(entries: PriceListPriceInput[] | undefined) {
+  if (!entries?.length) return;
+  const ids = entries.map((entry) => entry.priceListId);
+  if (new Set(ids).size !== ids.length) {
+    throw createError('Each price list can only be assigned once per item.', 400);
+  }
+  const activeLists = await prisma.priceList.findMany({
+    where: { id: { in: ids }, isActive: true },
+    select: { id: true },
+  });
+  if (activeLists.length !== ids.length) {
+    throw createError('One or more selected price lists are not available.', 400);
+  }
+}
+
+async function validateItemUnits(baseUnitId: number, conversions: UnitConversionInput[]) {
+  const conversionUnitIds = conversions.map((conversion) => conversion.unitId);
+  if (conversionUnitIds.includes(baseUnitId) || new Set(conversionUnitIds).size !== conversionUnitIds.length) {
+    throw createError('Choose a distinct alternate UOM for each conversion.', 400);
+  }
+  const activeUnits = await prisma.unit.findMany({
+    where: { id: { in: [baseUnitId, ...conversionUnitIds] }, isActive: true },
+    select: { id: true },
+  });
+  if (activeUnits.length !== new Set([baseUnitId, ...conversionUnitIds]).size) {
+    throw createError('One or more selected UOMs are not available.', 400);
+  }
+}
+
+function validatePriceListUnits(
+  entries: Array<{ unitId?: number | null }> | undefined,
+  baseUnitId: number,
+  conversions: UnitConversionInput[],
+) {
+  const allowedUnitIds = new Set([baseUnitId, ...conversions.map((conversion) => conversion.unitId)]);
+  for (const entry of entries ?? []) {
+    if (entry.unitId !== undefined && entry.unitId !== null && !allowedUnitIds.has(entry.unitId)) {
+      throw createError('A price-list UOM must be the item base UOM or one of its configured conversions.', 400);
+    }
+  }
+}
+
+export async function listPriceLists(_req: Request, res: Response, next: NextFunction) {
+  try {
+    const priceLists = await prisma.priceList.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
+    });
+    return res.json(priceLists.map((list) => ({
+      id: list.id,
+      code: list.code,
+      name: list.name,
+      description: list.description,
+      isDefault: list.isDefault,
+    })));
+  } catch (err) {
+    return next(err);
+  }
+}
+
+export async function createPriceList(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = z.object({
+      code: z.string().trim().min(1).max(50),
+      name: z.string().trim().min(1).max(255),
+      description: z.string().trim().optional().nullable(),
+      isDefault: z.boolean().default(false),
+    }).safeParse(req.body);
+    if (!parsed.success) return next(createError(parsed.error.issues[0].message, 400));
+
+    const priceList = await prisma.$transaction(async (tx) => {
+      if (parsed.data.isDefault) {
+        await tx.priceList.updateMany({ where: { isDefault: true }, data: { isDefault: false } });
+      }
+      return tx.priceList.create({ data: parsed.data });
+    });
+    return res.status(201).json(priceList);
+  } catch (err) {
+    return next(err);
+  }
+}
 
 export async function listItems(req: Request, res: Response, next: NextFunction) {
   try {
@@ -115,6 +224,10 @@ export async function createItem(req: AuthRequest, res: Response, next: NextFunc
     const parsed = itemSchema.safeParse(req.body);
     if (!parsed.success) return next(createError(parsed.error.issues[0].message, 400));
     const data = parsed.data;
+    const { priceListPrices, unitConversions = [], ...itemData } = data;
+    await validatePriceLists(priceListPrices);
+    await validateItemUnits(itemData.unitId, unitConversions);
+    validatePriceListUnits(priceListPrices, itemData.unitId, unitConversions);
 
     const codeExists = await prisma.item.findUnique({ where: { itemCode: data.itemCode } });
     if (codeExists) return next(createError(`Item code '${data.itemCode}' already exists.`, 409));
@@ -123,7 +236,21 @@ export async function createItem(req: AuthRequest, res: Response, next: NextFunc
       if (barcodeExists) return next(createError(`Barcode '${data.barcode}' already assigned.`, 409));
     }
 
-    const item = await prisma.item.create({ data: { ...data, createdBy: req.user?.id }, include });
+    const item = await prisma.item.create({ data: { ...itemData, createdBy: req.user?.id } });
+    if (unitConversions.length) {
+      await prisma.itemUnitConversion.createMany({
+        data: unitConversions.map((conversion) => ({ ...conversion, itemId: item.id })),
+      });
+    }
+    if (priceListPrices?.length) {
+      await prisma.priceListItem.createMany({
+        data: priceListPrices.map((entry) => ({
+          ...entry,
+          unitId: entry.unitId ?? item.unitId,
+          itemId: item.id,
+        })),
+      });
+    }
 
     // Initialize stock balance in default warehouse
     const defWarehouse = await prisma.warehouse.findFirst({ where: { isDefault: true } });
@@ -135,7 +262,8 @@ export async function createItem(req: AuthRequest, res: Response, next: NextFunc
       data: { userId: req.user?.id, username: req.user?.username, action: 'CREATE_ITEM',
         entity: 'items', entityId: String(item.id), newValues: data as any },
     });
-    return res.status(201).json(item);
+    const savedItem = await prisma.item.findUnique({ where: { id: item.id }, include });
+    return res.status(201).json(savedItem);
   } catch (err) { return next(err); }
 }
 
@@ -145,9 +273,22 @@ export async function updateItem(req: AuthRequest, res: Response, next: NextFunc
     const parsed = itemSchema.partial().safeParse(req.body);
     if (!parsed.success) return next(createError(parsed.error.issues[0].message, 400));
     const data = parsed.data;
+    const { priceListPrices, unitConversions, ...itemData } = data;
+    await validatePriceLists(priceListPrices);
 
-    const old = await prisma.item.findUnique({ where: { id } });
+    const old = await prisma.item.findUnique({ where: { id }, include: { unitConversions: true } });
     if (!old) return next(createError('Item not found.', 404));
+
+    const baseUnitId = itemData.unitId ?? old.unitId;
+    const effectiveConversions = unitConversions ?? old.unitConversions.map((conversion) => ({
+      unitId: conversion.unitId,
+      factor: Number(conversion.factor),
+    }));
+    await validateItemUnits(baseUnitId, effectiveConversions);
+    const retainedPriceListUnits = priceListPrices === undefined && unitConversions !== undefined
+      ? await prisma.priceListItem.findMany({ where: { itemId: id }, select: { unitId: true } })
+      : priceListPrices;
+    validatePriceListUnits(retainedPriceListUnits, baseUnitId, effectiveConversions);
 
     if (data.barcode && data.barcode !== old.barcode) {
       const dup = await prisma.item.findFirst({ where: { barcode: data.barcode, id: { not: id } } });
@@ -169,12 +310,37 @@ export async function updateItem(req: AuthRequest, res: Response, next: NextFunc
       });
     }
 
-    const item = await prisma.item.update({ where: { id }, data, include });
+    await prisma.item.update({ where: { id }, data: itemData });
+    if (unitConversions !== undefined || priceListPrices !== undefined) {
+      await prisma.$transaction(async (tx) => {
+        if (priceListPrices !== undefined) {
+          await tx.priceListItem.deleteMany({ where: { itemId: id } });
+        }
+        if (unitConversions !== undefined) {
+          await tx.itemUnitConversion.deleteMany({ where: { itemId: id } });
+          if (unitConversions.length) {
+            await tx.itemUnitConversion.createMany({
+              data: unitConversions.map((conversion) => ({ ...conversion, itemId: id })),
+            });
+          }
+        }
+        if (priceListPrices?.length) {
+          await tx.priceListItem.createMany({
+            data: priceListPrices.map((entry) => ({
+              ...entry,
+              unitId: entry.unitId ?? baseUnitId,
+              itemId: id,
+            })),
+          });
+        }
+      });
+    }
     await prisma.auditLog.create({
       data: { userId: req.user?.id, username: req.user?.username, action: 'UPDATE_ITEM',
         entity: 'items', entityId: String(id), oldValues: old as any, newValues: data as any },
     });
-    return res.json(item);
+    const savedItem = await prisma.item.findUnique({ where: { id }, include });
+    return res.json(savedItem);
   } catch (err) { return next(err); }
 }
 

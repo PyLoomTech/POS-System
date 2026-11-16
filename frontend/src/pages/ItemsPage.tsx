@@ -1,22 +1,34 @@
 import { useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent, FormEvent } from 'react'
-import { ImagePlus, Link2, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react'
+import { ImagePlus, Link2, Package, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
-import { DataTable } from '@/components/ui/DataTable'
-import type { Column } from '@/components/ui/DataTable'
+import { FeedList, initials } from '@/components/ui/FeedList'
+import type { FeedColumn } from '@/components/ui/FeedList'
 import { Field, Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { useFetch } from '@/hooks/useFetch'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatCurrency, formatNumber, imageSrc, toNumber } from '@/lib/utils'
-import type { Category, Item, Paginated, TaxRate } from '@/types'
+import type { Category, Item, Paginated, PriceList, TaxRate } from '@/types'
 
 interface UnitOption {
   id: number
   name: string
   abbreviation: string | null
+}
+
+interface PriceListRow {
+  key: string
+  priceListId: string
+  unitId: string
+  price: string
+}
+
+interface ConversionRow {
+  key: string
+  unitId: string
+  factor: string
 }
 
 interface ItemForm {
@@ -60,7 +72,6 @@ const EMPTY_FORM: ItemForm = {
 }
 
 export function ItemsPage() {
-  const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const { data, loading, error, reload } = useFetch<Paginated<Item>>(
     `/items?limit=100${query ? `&search=${encodeURIComponent(query)}` : ''}`,
@@ -68,10 +79,13 @@ export function ItemsPage() {
   const { data: categories, reload: reloadCategories } = useFetch<Category[]>('/categories')
   const { data: units } = useFetch<UnitOption[]>('/categories/units')
   const { data: taxRates } = useFetch<TaxRate[]>('/items/tax-rates')
+  const { data: priceLists } = useFetch<PriceList[]>('/items/price-lists')
 
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Item | null>(null)
   const [form, setForm] = useState<ItemForm>(EMPTY_FORM)
+  const [priceRows, setPriceRows] = useState<PriceListRow[]>([])
+  const [conversionRows, setConversionRows] = useState<ConversionRow[]>([])
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -85,6 +99,8 @@ export function ItemsPage() {
   function openCreate() {
     setEditing(null)
     setForm(EMPTY_FORM)
+    setPriceRows([])
+    setConversionRows([])
     setFormError(null)
     setOpen(true)
   }
@@ -106,12 +122,46 @@ export function ItemsPage() {
       minimumStock: String(toNumber(item.minimumStock)),
       reorderLevel: String(toNumber(item.reorderLevel)),
     })
+    setPriceRows((item.priceListPrices ?? []).map((entry) => ({
+      key: crypto.randomUUID(),
+      priceListId: String(entry.priceListId),
+      unitId: String(entry.unitId ?? item.unit?.id ?? ''),
+      price: String(toNumber(entry.price)),
+    })))
+    setConversionRows((item.unitConversions ?? []).map((conversion) => ({
+      key: crypto.randomUUID(),
+      unitId: String(conversion.unitId),
+      factor: String(toNumber(conversion.factor)),
+    })))
     setFormError(null)
     setOpen(true)
   }
 
   function update<K extends keyof ItemForm>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function addPriceRow() {
+    const available = (priceLists ?? []).find(
+      (list) => !priceRows.some((row) => row.priceListId === String(list.id)),
+    )
+    setPriceRows((prev) => [...prev, {
+      key: crypto.randomUUID(),
+      priceListId: available ? String(available.id) : '',
+      unitId: form.unitId,
+      price: '',
+    }])
+  }
+
+  function addConversionRow() {
+    const availableUnit = (units ?? []).find((unit) =>
+      String(unit.id) !== form.unitId && !conversionRows.some((row) => row.unitId === String(unit.id)),
+    )
+    setConversionRows((prev) => [...prev, {
+      key: crypto.randomUUID(),
+      unitId: availableUnit ? String(availableUnit.id) : '',
+      factor: '',
+    }])
   }
 
   async function onCreateCategory() {
@@ -177,6 +227,16 @@ export function ItemsPage() {
       taxRateId: form.taxRateId ? Number(form.taxRateId) : null,
       purchasePrice: Number(form.purchasePrice) || 0,
       sellingPrice: Number(form.sellingPrice) || 0,
+      unitConversions: conversionRows
+        .filter((row) => row.unitId && row.factor.trim() !== '')
+        .map((row) => ({ unitId: Number(row.unitId), factor: Number(row.factor) })),
+      priceListPrices: priceRows
+        .filter((row) => row.priceListId && row.price.trim() !== '')
+        .map((row) => ({
+          priceListId: Number(row.priceListId),
+          unitId: Number(row.unitId || form.unitId),
+          price: Number(row.price),
+        })),
       minimumStock: Number(form.minimumStock) || 0,
       reorderLevel: Number(form.reorderLevel) || 0,
     }
@@ -201,61 +261,42 @@ export function ItemsPage() {
   const selling = toNumber(form.sellingPrice)
   const margin = buying > 0 ? ((selling - buying) / buying) * 100 : 0
 
-  const columns: Column<Item>[] = [
+  const columns: FeedColumn<Item>[] = [
     {
-      header: '',
-      cell: (row) => (
-        <div className="h-11 w-11 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-          {row.imageUrl ? (
-            <img
-              src={imageSrc(row.imageUrl)}
-              alt={row.name}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <span className="flex h-full w-full items-center justify-center text-slate-300">
-              <ImagePlus size={16} />
-            </span>
-          )}
-        </div>
-      ),
-      className: 'w-14',
+      header: 'Category',
+      width: '150px',
+      hideOnMobile: true,
+      cell: (row) => <span className="fv">{row.category?.name ?? '—'}</span>,
     },
     {
-      header: 'Code',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.itemCode}</span>,
+      header: 'Unit',
+      width: '90px',
+      hideOnMobile: true,
+      cell: (row) => <span className="fv">{row.unit?.abbreviation ?? row.unit?.name ?? '—'}</span>,
     },
-    {
-      header: 'Item',
-      cell: (row) => (
-        <div>
-          <p className="font-medium text-slate-800">{row.name}</p>
-          <p className="text-xs text-slate-400">{row.barcode ?? 'No barcode'}</p>
-        </div>
-      ),
-    },
-    { header: 'Category', cell: (row) => row.category?.name ?? '—' },
-    { header: 'Unit', cell: (row) => row.unit?.abbreviation ?? row.unit?.name ?? '—' },
     {
       header: 'Buying rate',
+      width: '130px',
       align: 'right',
-      cell: (row) => <span className="text-slate-500">{formatCurrency(row.purchasePrice)}</span>,
+      cell: (row) => <span className="fv text-ink-3">{formatCurrency(row.purchasePrice)}</span>,
     },
     {
       header: 'Selling rate',
+      width: '130px',
       align: 'right',
       cell: (row) => (
-        <span className="font-semibold text-slate-800">{formatCurrency(row.sellingPrice)}</span>
+        <span className="fv font-semibold text-ink">{formatCurrency(row.sellingPrice)}</span>
       ),
     },
     {
       header: 'Stock',
+      width: '110px',
       align: 'right',
       cell: (row) => {
         const qty = row.stockBalances.reduce((sum, balance) => sum + Number(balance.quantity), 0)
         const reorder = Number(row.reorderLevel)
         return (
-          <span className={reorder > 0 && qty <= reorder ? 'font-medium text-red-600' : ''}>
+          <span className={reorder > 0 && qty <= reorder ? 'fv font-medium text-brand-crimson' : 'fv'}>
             {formatNumber(qty, 2)}
           </span>
         )
@@ -263,65 +304,65 @@ export function ItemsPage() {
     },
     {
       header: 'Status',
+      width: '120px',
       align: 'center',
       cell: (row) => (
         <Badge tone={row.isActive ? 'green' : 'slate'}>{row.isActive ? 'Active' : 'Inactive'}</Badge>
-      ),
-    },
-    {
-      header: 'Actions',
-      align: 'right',
-      cell: (row) => (
-        <Button variant="outline" size="sm" icon={<Pencil size={14} />} onClick={() => openEdit(row)}>
-          Edit
-        </Button>
       ),
     },
   ]
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            setQuery(search.trim())
-          }}
-        >
-          <div className="relative">
-            <Search
-              size={16}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+      <FeedList
+        rows={data?.data ?? []}
+        rowKey={(row) => row.id}
+        columns={columns}
+        lead={(row) =>
+          row.imageUrl ? (
+            <img
+              src={imageSrc(row.imageUrl)}
+              alt=""
+              className="h-full w-full rounded-[6px] object-cover"
             />
-            <Input
-              className="w-64 pl-9"
-              placeholder="Search name, code, barcode…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </div>
-          <Button type="submit" variant="outline">
-            Search
+          ) : (
+            initials(row.name)
+          )
+        }
+        title={(row) => row.name}
+        subtitle={(row) => row.barcode ?? 'No barcode'}
+        onRowClick={openEdit}
+        rowAction={(row) => (
+          <Button variant="outline" size="sm" icon={<Pencil size={14} />} onClick={() => openEdit(row)}>
+            Edit
           </Button>
-        </form>
-        <Button icon={<Plus size={16} />} onClick={openCreate}>
-          New Item
-        </Button>
-      </div>
-
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={data?.data ?? []}
-          rowKey={(row) => row.id}
-          loading={loading}
-          error={error}
-          onRetry={reload}
-          emptyTitle="No items yet"
-          emptyDescription="Add products and services to sell at the point of sale."
-        />
-      </Card>
+        )}
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyIcon={<Package size={20} />}
+        emptyTitle="No items yet"
+        emptyDescription="Add products and services to sell at the point of sale."
+        toolbar={
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="relative">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
+              />
+              <Input
+                className="w-64 pl-9"
+                placeholder="Search name, code, barcode…"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
+            <Button icon={<Plus size={16} />} onClick={openCreate}>
+              New Item
+            </Button>
+          </div>
+        }
+      />
 
       <Modal
         open={open}
@@ -341,12 +382,12 @@ export function ItemsPage() {
       >
         <form id="item-form" onSubmit={onSubmit} className="space-y-5">
           {formError && (
-            <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</div>
+            <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">{formError}</div>
           )}
 
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-[200px_1fr]">
             <div className="space-y-2">
-              <span className="block text-xs font-medium text-slate-600">Image</span>
+              <span className="block text-xs font-medium text-ink-2">Image</span>
               <div
                 onDragOver={(event) => {
                   event.preventDefault()
@@ -355,8 +396,8 @@ export function ItemsPage() {
                 onDragLeave={() => setDragging(false)}
                 onDrop={onDropImage}
                 onClick={() => fileRef.current?.click()}
-                className={`flex h-40 w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-dashed bg-slate-50 transition ${
-                  dragging ? 'border-blue-400 bg-blue-50' : 'border-slate-300'
+                className={`flex h-40 w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-dashed bg-white/50 transition ${
+                  dragging ? 'border-accent bg-soft' : 'border-line'
                 }`}
               >
                 {form.imageUrl ? (
@@ -366,7 +407,7 @@ export function ItemsPage() {
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <span className="flex flex-col items-center gap-1 text-slate-400">
+                  <span className="flex flex-col items-center gap-1 text-ink-3">
                     <ImagePlus size={22} />
                     <span className="text-[11px]">
                       {uploading ? 'Uploading…' : 'Drag & drop or click'}
@@ -408,7 +449,7 @@ export function ItemsPage() {
               <div className="relative">
                 <Link2
                   size={14}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
                 />
                 <Input
                   className="pl-8 text-xs"
@@ -505,8 +546,8 @@ export function ItemsPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <div className="rounded-2xl border border-line bg-white/50 p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">
               Pricing, Tax &amp; Stock
             </p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -583,11 +624,165 @@ export function ItemsPage() {
                 </Select>
               </Field>
             </div>
-            <p className="mt-3 text-xs text-slate-500">
+            <div className="mt-4 border-t border-line pt-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-ink">UOM conversions</p>
+                  <p className="text-xs text-ink-3">Set how many base units are in each alternate unit.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  icon={<Plus size={14} />}
+                  disabled={!form.unitId || conversionRows.length >= (units?.length ?? 0) - 1}
+                  onClick={addConversionRow}
+                >
+                  Add conversion
+                </Button>
+              </div>
+              {conversionRows.length > 0 && (
+                <div className="space-y-2">
+                  {conversionRows.map((row) => (
+                    <div key={row.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px_36px] items-end gap-2">
+                      <Field label="Alternate UOM">
+                        <Select
+                          value={row.unitId}
+                          onChange={(event) => setConversionRows((prev) => prev.map((current) =>
+                            current.key === row.key ? { ...current, unitId: event.target.value } : current,
+                          ))}
+                        >
+                          <option value="">Select UOM</option>
+                          {(units ?? []).filter((unit) => String(unit.id) !== form.unitId).map((unit) => (
+                            <option
+                              key={unit.id}
+                              value={unit.id}
+                              disabled={conversionRows.some((other) => other.key !== row.key && other.unitId === String(unit.id))}
+                            >
+                              {unit.name}{unit.abbreviation ? ` (${unit.abbreviation})` : ''}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <Field label="Base units per UOM">
+                        <Input
+                          type="number"
+                          min="0.000001"
+                          step="any"
+                          value={row.factor}
+                          onChange={(event) => setConversionRows((prev) => prev.map((current) =>
+                            current.key === row.key ? { ...current, factor: event.target.value } : current,
+                          ))}
+                        />
+                      </Field>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        aria-label="Remove UOM conversion"
+                        title="Remove UOM conversion"
+                        onClick={() => {
+                          setConversionRows((prev) => prev.filter((current) => current.key !== row.key))
+                          setPriceRows((prev) => prev.map((current) =>
+                            current.unitId === row.unitId ? { ...current, unitId: form.unitId } : current,
+                          ))
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="mt-4 border-t border-line pt-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-ink">Price list rates</p>
+                  <p className="text-xs text-ink-3">Optional prices for the item&apos;s base UOM.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  icon={<Plus size={14} />}
+                  disabled={!priceLists?.length || priceRows.length >= priceLists.length}
+                  onClick={addPriceRow}
+                >
+                  Add price
+                </Button>
+              </div>
+              {priceRows.length === 0 ? (
+                <p className="text-xs text-ink-3">No price-list overrides added.</p>
+              ) : (
+                <div className="space-y-2">
+                  {priceRows.map((row) => (
+                    <div key={row.key} className="grid grid-cols-[minmax(0,1fr)_140px_36px] items-end gap-2">
+                      <Field label="Price list">
+                        <Select
+                          value={row.priceListId}
+                          onChange={(event) => setPriceRows((prev) => prev.map((current) =>
+                            current.key === row.key ? { ...current, priceListId: event.target.value } : current,
+                          ))}
+                        >
+                          <option value="">Select a price list</option>
+                          {(priceLists ?? []).map((list) => (
+                            <option
+                              key={list.id}
+                              value={list.id}
+                              disabled={priceRows.some((other) => other.key !== row.key && other.priceListId === String(list.id))}
+                            >
+                              {list.name}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <Field label="UOM">
+                        <Select
+                          value={row.unitId || form.unitId}
+                          onChange={(event) => setPriceRows((prev) => prev.map((current) =>
+                            current.key === row.key ? { ...current, unitId: event.target.value } : current,
+                          ))}
+                        >
+                          {units?.filter((unit) => String(unit.id) === form.unitId).map((unit) => (
+                            <option key={unit.id} value={unit.id}>{unit.name}</option>
+                          ))}
+                          {conversionRows.map((conversion) => {
+                            const unit = units?.find((option) => String(option.id) === conversion.unitId)
+                            if (!unit) return null
+                            return <option key={conversion.key} value={unit.id}>{unit.name}</option>
+                          })}
+                        </Select>
+                      </Field>
+                      <Field label="Rate">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={row.price}
+                          onChange={(event) => setPriceRows((prev) => prev.map((current) =>
+                            current.key === row.key ? { ...current, price: event.target.value } : current,
+                          ))}
+                        />
+                      </Field>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        aria-label="Remove price-list rate"
+                        title="Remove price-list rate"
+                        onClick={() => setPriceRows((prev) => prev.filter((current) => current.key !== row.key))}
+                      >
+                        <Trash2 size={15} />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <p className="mt-3 text-xs text-ink-3">
               Margin:{' '}
               <span
                 className={
-                  margin < 0 ? 'font-medium text-red-600' : 'font-medium text-emerald-600'
+                  margin < 0 ? 'font-medium text-brand-crimson' : 'font-medium text-brand-green'
                 }
               >
                 {margin.toFixed(1)}%

@@ -16,6 +16,17 @@ const adjustmentSchema = z.object({
   })).min(1, 'At least one item is required'),
 });
 
+export async function listWarehouses(_req: Request, res: Response, next: NextFunction) {
+  try {
+    const warehouses = await prisma.warehouse.findMany({
+      where: { isActive: true },
+      select: { id: true, code: true, name: true, isDefault: true },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+    });
+    return res.json(warehouses);
+  } catch (err) { return next(err); }
+}
+
 export async function getStockLevels(req: Request, res: Response, next: NextFunction) {
   try {
     const { search, warehouseId, page = 1, limit = 100 } = req.query;

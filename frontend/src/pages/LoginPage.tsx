@@ -38,15 +38,15 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-slate-900 p-12 lg:flex">
+    <div className="flex min-h-screen">
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-accent via-accent-2 to-rail p-12 lg:flex">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-white backdrop-blur">
             <Store size={20} />
           </div>
           <div className="leading-tight">
             <p className="text-sm font-semibold text-white">Pyloom POS</p>
-            <p className="text-[11px] text-blue-200">Powered by Pyloom Technologies</p>
+            <p className="text-[11px] text-railtext">Powered by Pyloom Technologies</p>
           </div>
         </div>
 
@@ -57,7 +57,7 @@ export function LoginPage() {
               <br />
               not your paperwork.
             </h1>
-            <p className="mt-3 max-w-sm text-sm text-blue-100">
+            <p className="mt-3 max-w-sm text-sm text-railtext">
               A complete retail platform for billing, inventory and accounting — built for
               Nepali businesses.
             </p>
@@ -70,35 +70,35 @@ export function LoginPage() {
                 </span>
                 <span>
                   <span className="block text-sm font-medium text-white">{item.title}</span>
-                  <span className="block text-xs text-blue-100">{item.text}</span>
+                  <span className="block text-xs text-railtext">{item.text}</span>
                 </span>
               </li>
             ))}
           </ul>
         </div>
 
-        <p className="text-[11px] text-blue-200">NPR · VAT 13% · Asia/Kathmandu</p>
+        <p className="text-[11px] text-railtext">NPR · VAT 13% · Asia/Kathmandu</p>
       </div>
 
       <div className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex flex-col items-center text-center lg:hidden">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-lg">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-accent-2 text-white shadow-lg">
               <Store size={24} />
             </div>
-            <h1 className="mt-3 text-xl font-semibold text-slate-900">Pyloom POS</h1>
-            <p className="text-xs text-slate-500">Retail · Inventory · Accounting</p>
+            <h1 className="mt-3 text-xl font-semibold text-ink">Pyloom POS</h1>
+            <p className="text-xs text-ink-3">Retail · Inventory · Accounting</p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-7 shadow-sm">
+          <div className="surface rounded-2xl p-7">
             <div className="mb-6">
-              <h2 className="text-lg font-semibold text-slate-900">Sign in</h2>
-              <p className="mt-1 text-sm text-slate-500">Use your staff credentials to continue.</p>
+              <h2 className="text-lg font-semibold text-ink">Sign in</h2>
+              <p className="mt-1 text-sm text-ink-3">Use your staff credentials to continue.</p>
             </div>
 
             <form onSubmit={onSubmit} className="space-y-4">
               {error && (
-                <div className="rounded-xl bg-red-50 px-3 py-2.5 text-xs text-red-600 ring-1 ring-inset ring-red-600/20">
+                <div className="rounded-xl bg-[#f9e4e7] px-3 py-2.5 text-xs text-brand-crimson ring-1 ring-inset ring-brand-crimson/20">
                   {error}
                 </div>
               )}
@@ -107,7 +107,7 @@ export function LoginPage() {
                 <div className="relative">
                   <User
                     size={16}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
                   />
                   <Input
                     className="pl-9"
@@ -124,7 +124,7 @@ export function LoginPage() {
                 <div className="relative">
                   <Lock
                     size={16}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
                   />
                   <Input
                     className="pl-9"
@@ -144,7 +144,7 @@ export function LoginPage() {
             </form>
           </div>
 
-          <p className="mt-6 text-center text-[11px] text-slate-400">
+          <p className="mt-6 text-center text-[11px] text-ink-3">
             Pyloom POS v1.0 — Powered by Pyloom Technologies
           </p>
         </div>

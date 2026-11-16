@@ -268,21 +268,39 @@ type TabKey =
   | 'payables'
   | 'daybook'
 
-const TABS: { key: TabKey; label: string; icon: ReactNode }[] = [
-  { key: 'summary', label: 'Sales Summary', icon: <BarChart3 size={15} /> },
-  { key: 'by-item', label: 'Sales by Item', icon: <Package size={15} /> },
-  { key: 'by-category', label: 'Sales by Category', icon: <FolderTree size={15} /> },
-  { key: 'by-customer', label: 'Sales by Customer', icon: <UsersRound size={15} /> },
-  { key: 'by-cashier', label: 'Sales by Cashier', icon: <UserRound size={15} /> },
-  { key: 'purchases', label: 'Purchases', icon: <ShoppingCart size={15} /> },
-  { key: 'pl', label: 'Profit & Loss', icon: <TrendingUp size={15} /> },
-  { key: 'vat', label: 'VAT Report', icon: <Percent size={15} /> },
-  { key: 'stock', label: 'Stock Valuation', icon: <Boxes size={15} /> },
-  { key: 'low-stock', label: 'Low Stock', icon: <AlertTriangle size={15} /> },
-  { key: 'movements', label: 'Stock Movements', icon: <Activity size={15} /> },
-  { key: 'receivables', label: 'Receivables', icon: <ArrowDownLeft size={15} /> },
-  { key: 'payables', label: 'Payables', icon: <ArrowUpRight size={15} /> },
-  { key: 'daybook', label: 'Day Book', icon: <CalendarDays size={15} /> },
+const REPORT_GROUPS: { label: string; items: { key: TabKey; label: string; icon: ReactNode }[] }[] = [
+  {
+    label: 'Sales',
+    items: [
+      { key: 'summary', label: 'Sales Summary', icon: <BarChart3 size={15} /> },
+      { key: 'by-item', label: 'Sales by Item', icon: <Package size={15} /> },
+      { key: 'by-category', label: 'Sales by Category', icon: <FolderTree size={15} /> },
+      { key: 'by-customer', label: 'Sales by Customer', icon: <UsersRound size={15} /> },
+      { key: 'by-cashier', label: 'Sales by Cashier', icon: <UserRound size={15} /> },
+    ],
+  },
+  {
+    label: 'Buying',
+    items: [{ key: 'purchases', label: 'Purchases', icon: <ShoppingCart size={15} /> }],
+  },
+  {
+    label: 'Finance',
+    items: [
+      { key: 'pl', label: 'Profit & Loss', icon: <TrendingUp size={15} /> },
+      { key: 'vat', label: 'VAT Report', icon: <Percent size={15} /> },
+      { key: 'receivables', label: 'Receivables', icon: <ArrowDownLeft size={15} /> },
+      { key: 'payables', label: 'Payables', icon: <ArrowUpRight size={15} /> },
+      { key: 'daybook', label: 'Day Book', icon: <CalendarDays size={15} /> },
+    ],
+  },
+  {
+    label: 'Stock',
+    items: [
+      { key: 'stock', label: 'Stock Valuation', icon: <Boxes size={15} /> },
+      { key: 'low-stock', label: 'Low Stock', icon: <AlertTriangle size={15} /> },
+      { key: 'movements', label: 'Stock Movements', icon: <Activity size={15} /> },
+    ],
+  },
 ]
 
 // ---------------------------------------------------------------
@@ -327,13 +345,13 @@ function SummaryRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <dt className={cn('text-slate-500', strong && 'font-medium text-slate-700')}>{label}</dt>
+      <dt className={cn('text-ink-3', strong && 'font-medium text-ink')}>{label}</dt>
       <dd
         className={cn(
-          'tabular-nums text-slate-800',
+          'tabular-nums text-ink',
           strong && 'font-semibold',
-          tone === 'emerald' && 'text-emerald-600',
-          tone === 'red' && 'text-red-600',
+          tone === 'emerald' && 'text-brand-green',
+          tone === 'red' && 'text-brand-crimson',
         )}
       >
         {value}
@@ -387,7 +405,7 @@ function SalesSummaryTab({ range }: { range: string }) {
               title="Sales Summary"
               subtitle={periodLabel(data.from, data.to)}
               action={
-                <span className="text-xs text-slate-400">{data.invoiceCount} invoice(s)</span>
+                <span className="text-xs text-ink-3">{data.invoiceCount} invoice(s)</span>
               }
             />
             <dl className="grid grid-cols-1 gap-x-10 gap-y-3 px-5 py-4 sm:grid-cols-2">
@@ -418,11 +436,11 @@ function SalesByItemTab({ range }: { range: string }) {
   const columns: Column<SalesByItemRow>[] = [
     {
       header: 'Code',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.itemCode}</span>,
+      cell: (row) => <span className="font-mono text-xs text-ink-3">{row.itemCode}</span>,
     },
     {
       header: 'Item',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.name}</span>,
     },
     {
       header: 'Quantity',
@@ -433,13 +451,13 @@ function SalesByItemTab({ range }: { range: string }) {
       header: 'Revenue',
       align: 'right',
       cell: (row) => (
-        <span className="font-semibold text-slate-800">{formatCurrency(row.revenue)}</span>
+        <span className="font-semibold text-ink">{formatCurrency(row.revenue)}</span>
       ),
     },
     {
       header: 'Tax',
       align: 'right',
-      cell: (row) => <span className="text-slate-500">{formatCurrency(row.tax)}</span>,
+      cell: (row) => <span className="text-ink-3">{formatCurrency(row.tax)}</span>,
     },
   ]
 
@@ -462,7 +480,7 @@ function SalesByCategoryTab({ range }: { range: string }) {
   const columns: Column<SalesByCategoryRow>[] = [
     {
       header: 'Category',
-      cell: (row) => <span className="font-medium text-slate-800">{row.category}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.category}</span>,
     },
     {
       header: 'Quantity',
@@ -473,7 +491,7 @@ function SalesByCategoryTab({ range }: { range: string }) {
       header: 'Revenue',
       align: 'right',
       cell: (row) => (
-        <span className="font-semibold text-slate-800">{formatCurrency(row.revenue)}</span>
+        <span className="font-semibold text-ink">{formatCurrency(row.revenue)}</span>
       ),
     },
   ]
@@ -497,11 +515,11 @@ function SalesByCustomerTab({ range }: { range: string }) {
   const columns: Column<SalesByCustomerRow>[] = [
     {
       header: 'Code',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.customerCode}</span>,
+      cell: (row) => <span className="font-mono text-xs text-ink-3">{row.customerCode}</span>,
     },
     {
       header: 'Customer',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.name}</span>,
     },
     { header: 'Phone', cell: (row) => row.phone ?? '—' },
     {
@@ -523,7 +541,7 @@ function SalesByCustomerTab({ range }: { range: string }) {
       header: 'Outstanding',
       align: 'right',
       cell: (row) => (
-        <span className={toNumber(row.outstanding) > 0 ? 'text-red-600' : 'text-slate-400'}>
+        <span className={toNumber(row.outstanding) > 0 ? 'text-brand-crimson' : 'text-ink-3'}>
           {formatCurrency(row.outstanding)}
         </span>
       ),
@@ -549,7 +567,7 @@ function SalesByCashierTab({ range }: { range: string }) {
   const columns: Column<SalesByCashierRow>[] = [
     {
       header: 'Cashier',
-      cell: (row) => <span className="font-medium text-slate-800">{row.cashier}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.cashier}</span>,
     },
     {
       header: 'Invoices',
@@ -593,11 +611,11 @@ function PurchaseSummaryTab({ range }: { range: string }) {
   const columns: Column<PurchaseSupplierRow>[] = [
     {
       header: 'Code',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.supplierCode}</span>,
+      cell: (row) => <span className="font-mono text-xs text-ink-3">{row.supplierCode}</span>,
     },
     {
       header: 'Supplier',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.name}</span>,
     },
     {
       header: 'Invoices',
@@ -618,7 +636,7 @@ function PurchaseSummaryTab({ range }: { range: string }) {
       header: 'Outstanding',
       align: 'right',
       cell: (row) => (
-        <span className={toNumber(row.outstanding) > 0 ? 'text-amber-600' : 'text-slate-400'}>
+        <span className={toNumber(row.outstanding) > 0 ? 'text-brand-amber' : 'text-ink-3'}>
           {formatCurrency(row.outstanding)}
         </span>
       ),
@@ -684,9 +702,9 @@ function ProfitLossTab({ range }: { range: string }) {
             <CardHeader title="Profit & Loss" subtitle={periodLabel(data.from, data.to)} />
             <div className="space-y-5 px-5 py-4">
               <section>
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-sm font-semibold text-slate-700">Revenue</span>
-                  <span className="text-sm font-semibold tabular-nums text-emerald-600">
+                <div className="flex items-center justify-between border-b border-line-2 pb-2">
+                  <span className="text-sm font-semibold text-ink">Revenue</span>
+                  <span className="text-sm font-semibold tabular-nums text-brand-green">
                     {formatCurrency(data.revenue)}
                   </span>
                 </div>
@@ -694,40 +712,40 @@ function ProfitLossTab({ range }: { range: string }) {
                   {data.revenueAccounts.map((line) => (
                     <li
                       key={line.accountCode}
-                      className="flex items-center justify-between text-sm text-slate-500"
+                      className="flex items-center justify-between text-sm text-ink-3"
                     >
                       <span className="truncate">
-                        <span className="mr-2 font-mono text-xs text-slate-400">
+                        <span className="mr-2 font-mono text-xs text-ink-3">
                           {line.accountCode}
                         </span>
                         {line.name}
                       </span>
-                      <span className="tabular-nums text-emerald-600">
+                      <span className="tabular-nums text-brand-green">
                         {formatCurrency(line.amount)}
                       </span>
                     </li>
                   ))}
                   {data.revenueAccounts.length === 0 && (
-                    <li className="text-xs text-slate-400">No revenue accounts in this period.</li>
+                    <li className="text-xs text-ink-3">No revenue accounts in this period.</li>
                   )}
                 </ul>
               </section>
 
-              <section className="space-y-1.5 border-t border-slate-100 pt-3 text-sm">
+              <section className="space-y-1.5 border-t border-line-2 pt-3 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Cost of Goods Sold</span>
-                  <span className="tabular-nums text-red-600">- {formatCurrency(data.cogs)}</span>
+                  <span className="text-ink-3">Cost of Goods Sold</span>
+                  <span className="tabular-nums text-brand-crimson">- {formatCurrency(data.cogs)}</span>
                 </div>
-                <div className="flex items-center justify-between border-t border-slate-200 pt-2 font-semibold text-slate-800">
+                <div className="flex items-center justify-between border-t border-line pt-2 font-semibold text-ink">
                   <span>Gross Profit</span>
                   <span className="tabular-nums">{formatCurrency(data.grossProfit)}</span>
                 </div>
               </section>
 
               <section>
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-sm font-semibold text-slate-700">Expenses</span>
-                  <span className="text-sm font-semibold tabular-nums text-red-600">
+                <div className="flex items-center justify-between border-b border-line-2 pb-2">
+                  <span className="text-sm font-semibold text-ink">Expenses</span>
+                  <span className="text-sm font-semibold tabular-nums text-brand-crimson">
                     {formatCurrency(data.expenses)}
                   </span>
                 </div>
@@ -735,10 +753,10 @@ function ProfitLossTab({ range }: { range: string }) {
                   {data.expenseAccounts.map((line) => (
                     <li
                       key={line.accountCode}
-                      className="flex items-center justify-between text-sm text-slate-500"
+                      className="flex items-center justify-between text-sm text-ink-3"
                     >
                       <span className="truncate">
-                        <span className="mr-2 font-mono text-xs text-slate-400">
+                        <span className="mr-2 font-mono text-xs text-ink-3">
                           {line.accountCode}
                         </span>
                         {line.name}
@@ -747,7 +765,7 @@ function ProfitLossTab({ range }: { range: string }) {
                     </li>
                   ))}
                   {data.expenseAccounts.length === 0 && (
-                    <li className="text-xs text-slate-400">No expense accounts in this period.</li>
+                    <li className="text-xs text-ink-3">No expense accounts in this period.</li>
                   )}
                 </ul>
               </section>
@@ -755,13 +773,13 @@ function ProfitLossTab({ range }: { range: string }) {
               <div
                 className={cn(
                   'flex items-center justify-between rounded-2xl px-4 py-3',
-                  netPositive ? 'bg-emerald-50' : 'bg-red-50',
+                  netPositive ? 'bg-[#e3f2ec]' : 'bg-[#f9e4e7]',
                 )}
               >
                 <span
                   className={cn(
                     'text-sm font-semibold',
-                    netPositive ? 'text-emerald-700' : 'text-red-700',
+                    netPositive ? 'text-brand-green' : 'text-brand-crimson',
                   )}
                 >
                   Net Profit
@@ -769,7 +787,7 @@ function ProfitLossTab({ range }: { range: string }) {
                 <span
                   className={cn(
                     'text-lg font-semibold tabular-nums',
-                    netPositive ? 'text-emerald-700' : 'text-red-700',
+                    netPositive ? 'text-brand-green' : 'text-brand-crimson',
                   )}
                 >
                   {formatCurrency(data.netProfit)}
@@ -790,8 +808,8 @@ function VatReportTab({ range }: { range: string }) {
         <Card>
           <CardHeader title="VAT Report" subtitle={periodLabel(data.from, data.to)} />
           <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sales</p>
+            <div className="rounded-2xl border border-line p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">Sales</p>
               <dl className="mt-3 space-y-2 text-sm">
                 <SummaryRow
                   label="Taxable Amount"
@@ -808,8 +826,8 @@ function VatReportTab({ range }: { range: string }) {
                 />
               </dl>
             </div>
-            <div className="rounded-2xl border border-slate-200 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <div className="rounded-2xl border border-line p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">
                 Purchases
               </p>
               <dl className="mt-3 space-y-2 text-sm">
@@ -821,12 +839,12 @@ function VatReportTab({ range }: { range: string }) {
               </dl>
             </div>
           </div>
-          <div className="mx-5 mb-5 flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-            <span className="text-sm font-semibold text-slate-700">Net VAT Payable</span>
+          <div className="mx-5 mb-5 flex items-center justify-between rounded-2xl bg-line-2 px-4 py-3">
+            <span className="text-sm font-semibold text-ink">Net VAT Payable</span>
             <span
               className={cn(
                 'text-lg font-semibold tabular-nums',
-                toNumber(data.netVatPayable) >= 0 ? 'text-slate-900' : 'text-red-600',
+                toNumber(data.netVatPayable) >= 0 ? 'text-ink' : 'text-brand-crimson',
               )}
             >
               {formatCurrency(data.netVatPayable)}
@@ -842,11 +860,11 @@ function StockValuationTab() {
   const columns: Column<StockValuationRow>[] = [
     {
       header: 'Code',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.itemCode}</span>,
+      cell: (row) => <span className="font-mono text-xs text-ink-3">{row.itemCode}</span>,
     },
     {
       header: 'Item',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.name}</span>,
     },
     { header: 'Warehouse', cell: (row) => row.warehouse },
     {
@@ -857,13 +875,13 @@ function StockValuationTab() {
     {
       header: 'Avg. Cost',
       align: 'right',
-      cell: (row) => <span className="text-slate-500">{formatCurrency(row.averageCost)}</span>,
+      cell: (row) => <span className="text-ink-3">{formatCurrency(row.averageCost)}</span>,
     },
     {
       header: 'Value',
       align: 'right',
       cell: (row) => (
-        <span className="font-semibold text-slate-800">{formatCurrency(row.value)}</span>
+        <span className="font-semibold text-ink">{formatCurrency(row.value)}</span>
       ),
     },
   ]
@@ -907,17 +925,17 @@ function LowStockTab() {
   const columns: Column<LowStockRow>[] = [
     {
       header: 'Code',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.itemCode}</span>,
+      cell: (row) => <span className="font-mono text-xs text-ink-3">{row.itemCode}</span>,
     },
     {
       header: 'Item',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.name}</span>,
     },
     {
       header: 'On Hand',
       align: 'right',
       cell: (row) => (
-        <span className={toNumber(row.quantity) <= 0 ? 'font-semibold text-red-600' : 'text-amber-600'}>
+        <span className={toNumber(row.quantity) <= 0 ? 'font-semibold text-brand-crimson' : 'text-brand-amber'}>
           {formatNumber(row.quantity, 2)}
         </span>
       ),
@@ -974,8 +992,8 @@ function InventoryMovementsTab({ range }: { range: string }) {
     {
       header: 'Item',
       cell: (row) => (
-        <span className="font-medium text-slate-800">
-          {row.item} <span className="font-mono text-xs text-slate-400">({row.itemCode})</span>
+        <span className="font-medium text-ink">
+          {row.item} <span className="font-mono text-xs text-ink-3">({row.itemCode})</span>
         </span>
       ),
     },
@@ -987,8 +1005,8 @@ function InventoryMovementsTab({ range }: { range: string }) {
         <span
           className={
             toNumber(row.quantity) < 0
-              ? 'font-semibold text-red-600'
-              : 'font-semibold text-emerald-600'
+              ? 'font-semibold text-brand-crimson'
+              : 'font-semibold text-brand-green'
           }
         >
           {formatNumber(row.quantity, 2)}
@@ -1020,7 +1038,7 @@ function InventoryMovementsTab({ range }: { range: string }) {
       >
         {(data) => (
           <>
-            <p className="px-5 py-3 text-xs text-slate-500">
+            <p className="px-5 py-3 text-xs text-ink-3">
               Showing up to the latest {formatNumber(data.limit)} movements in this date range.
             </p>
             <DataTable columns={columns} rows={data.data} rowKey={(row) => row.id} />
@@ -1036,12 +1054,12 @@ function ReceivablesTab() {
     {
       header: 'Code',
       cell: (row) => (
-        <span className="font-mono text-xs text-slate-500">{row.customerCode ?? '—'}</span>
+        <span className="font-mono text-xs text-ink-3">{row.customerCode ?? '—'}</span>
       ),
     },
     {
       header: 'Customer',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.name}</span>,
     },
     { header: 'Phone', cell: (row) => row.phone ?? '—' },
     {
@@ -1053,7 +1071,7 @@ function ReceivablesTab() {
       header: 'Outstanding',
       align: 'right',
       cell: (row) => (
-        <span className="font-semibold text-red-600">{formatCurrency(row.outstanding)}</span>
+        <span className="font-semibold text-brand-crimson">{formatCurrency(row.outstanding)}</span>
       ),
     },
   ]
@@ -1071,7 +1089,7 @@ function ReceivablesTab() {
             title="Receivables"
             subtitle="Outstanding balances owed by customers"
             action={
-              <span className="text-sm font-semibold text-slate-800">
+              <span className="text-sm font-semibold text-ink">
                 {formatCurrency(data.total)}
               </span>
             }
@@ -1092,12 +1110,12 @@ function PayablesTab() {
     {
       header: 'Code',
       cell: (row) => (
-        <span className="font-mono text-xs text-slate-500">{row.supplierCode ?? '—'}</span>
+        <span className="font-mono text-xs text-ink-3">{row.supplierCode ?? '—'}</span>
       ),
     },
     {
       header: 'Supplier',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.name}</span>,
     },
     { header: 'Phone', cell: (row) => row.phone ?? '—' },
     {
@@ -1109,7 +1127,7 @@ function PayablesTab() {
       header: 'Outstanding',
       align: 'right',
       cell: (row) => (
-        <span className="font-semibold text-amber-600">{formatCurrency(row.outstanding)}</span>
+        <span className="font-semibold text-brand-amber">{formatCurrency(row.outstanding)}</span>
       ),
     },
   ]
@@ -1127,7 +1145,7 @@ function PayablesTab() {
             title="Payables"
             subtitle="Outstanding balances owed to suppliers"
             action={
-              <span className="text-sm font-semibold text-slate-800">
+              <span className="text-sm font-semibold text-ink">
                 {formatCurrency(data.total)}
               </span>
             }
@@ -1161,10 +1179,10 @@ function DayBookSection<T>({
   return (
     <Card>
       <CardHeader title={title} subtitle={subtitle} action={
-        <span className="text-xs text-slate-400">{rows.length} record(s)</span>
+        <span className="text-xs text-ink-3">{rows.length} record(s)</span>
       } />
       {rows.length === 0 ? (
-        <p className="px-5 py-6 text-sm text-slate-400">{emptyNote}</p>
+        <p className="px-5 py-6 text-sm text-ink-3">{emptyNote}</p>
       ) : (
         <DataTable columns={columns} rows={rows} rowKey={rowKey} />
       )}
@@ -1176,7 +1194,7 @@ function DayBookTab({ date }: { date: string }) {
   const salesColumns: Column<DayBookInvoice>[] = [
     {
       header: 'Invoice',
-      cell: (row) => <span className="font-medium text-slate-800">{row.invoiceNumber}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.invoiceNumber}</span>,
     },
     { header: 'Customer', cell: (row) => row.customer?.name ?? 'Walk-in' },
     {
@@ -1194,7 +1212,7 @@ function DayBookTab({ date }: { date: string }) {
       header: 'Due',
       align: 'right',
       cell: (row) => (
-        <span className={toNumber(row.outstandingAmount) > 0 ? 'text-red-600' : 'text-slate-400'}>
+        <span className={toNumber(row.outstandingAmount) > 0 ? 'text-brand-crimson' : 'text-ink-3'}>
           {formatCurrency(row.outstandingAmount)}
         </span>
       ),
@@ -1204,7 +1222,7 @@ function DayBookTab({ date }: { date: string }) {
   const purchaseColumns: Column<DayBookInvoice>[] = [
     {
       header: 'Invoice',
-      cell: (row) => <span className="font-medium text-slate-800">{row.invoiceNumber}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.invoiceNumber}</span>,
     },
     { header: 'Supplier', cell: (row) => row.supplier?.name ?? '—' },
     {
@@ -1222,7 +1240,7 @@ function DayBookTab({ date }: { date: string }) {
       header: 'Due',
       align: 'right',
       cell: (row) => (
-        <span className={toNumber(row.outstandingAmount) > 0 ? 'text-red-600' : 'text-slate-400'}>
+        <span className={toNumber(row.outstandingAmount) > 0 ? 'text-brand-crimson' : 'text-ink-3'}>
           {formatCurrency(row.outstandingAmount)}
         </span>
       ),
@@ -1232,7 +1250,7 @@ function DayBookTab({ date }: { date: string }) {
   const paymentColumns: Column<DayBookPayment>[] = [
     {
       header: 'Payment',
-      cell: (row) => <span className="font-medium text-slate-800">{row.paymentNumber}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.paymentNumber}</span>,
     },
     {
       header: 'Party',
@@ -1243,7 +1261,7 @@ function DayBookTab({ date }: { date: string }) {
       header: 'Amount',
       align: 'right',
       cell: (row) => (
-        <span className="font-semibold text-slate-800">{formatCurrency(row.amount)}</span>
+        <span className="font-semibold text-ink">{formatCurrency(row.amount)}</span>
       ),
     },
   ]
@@ -1251,14 +1269,14 @@ function DayBookTab({ date }: { date: string }) {
   const returnColumns: Column<DayBookReturn>[] = [
     {
       header: 'Return',
-      cell: (row) => <span className="font-medium text-slate-800">{row.returnNumber}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.returnNumber}</span>,
     },
     { header: 'Customer', cell: (row) => row.customer?.name ?? 'Walk-in' },
     {
       header: 'Amount',
       align: 'right',
       cell: (row) => (
-        <span className="font-semibold text-amber-600">{formatCurrency(row.totalAmount)}</span>
+        <span className="font-semibold text-brand-amber">{formatCurrency(row.totalAmount)}</span>
       ),
     },
   ]
@@ -1335,7 +1353,43 @@ export function ReportsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="grid gap-4 lg:grid-cols-[236px_minmax(0,1fr)]">
+      <nav
+        aria-label="Report sections"
+        className="surface space-y-2 rounded-xl p-2 lg:sticky lg:top-4 lg:self-start"
+      >
+        {REPORT_GROUPS.map((group) => (
+          <div key={group.label}>
+            <p className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+              {group.label}
+            </p>
+            <div className="space-y-0.5">
+              {group.items.map((item) => {
+                const active = tab === item.key
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    aria-current={active ? 'page' : undefined}
+                    onClick={() => setTab(item.key)}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors',
+                      active
+                        ? 'bg-accent text-white shadow-sm'
+                        : 'text-ink-2 hover:bg-line-2 hover:text-ink',
+                    )}
+                  >
+                    {item.icon}
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      <div className="min-w-0 space-y-4">
       {usesDateRange && (
         <Card className="p-4">
           <div className="flex flex-wrap items-end gap-3">
@@ -1379,25 +1433,6 @@ export function ReportsPage() {
         </Card>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {TABS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => setTab(item.key)}
-            className={cn(
-              'inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors',
-              tab === item.key
-                ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
-            )}
-          >
-            {item.icon}
-            {item.label}
-          </button>
-        ))}
-      </div>
-
       {tab === 'summary' && <SalesSummaryTab range={range} />}
       {tab === 'by-item' && <SalesByItemTab range={range} />}
       {tab === 'by-category' && <SalesByCategoryTab range={range} />}
@@ -1412,6 +1447,7 @@ export function ReportsPage() {
       {tab === 'receivables' && <ReceivablesTab />}
       {tab === 'payables' && <PayablesTab />}
       {tab === 'daybook' && <DayBookTab date={appliedDay} />}
+      </div>
     </div>
   )
 }

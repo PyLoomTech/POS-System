@@ -1,14 +1,5 @@
-import {
-  AlertTriangle,
-  ArrowDownLeft,
-  ArrowUpRight,
-  Boxes,
-  Package,
-  Receipt,
-  TrendingUp,
-  Users,
-} from 'lucide-react'
-import { Card, CardHeader, StatCard } from '@/components/ui/Card'
+import { AlertTriangle, Boxes, Package, Receipt, TrendingUp } from 'lucide-react'
+import { Card, CardHeader } from '@/components/ui/Card'
 import { DataTable } from '@/components/ui/DataTable'
 import type { Column } from '@/components/ui/DataTable'
 import { Spinner, ErrorState } from '@/components/ui/Feedback'
@@ -32,8 +23,8 @@ export function DashboardPage() {
           <span
             className={
               rank <= 3
-                ? 'inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-600'
-                : 'inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs font-medium text-slate-500'
+                ? 'inline-flex h-6 w-6 items-center justify-center rounded-full bg-soft text-xs font-semibold text-accent'
+                : 'inline-flex h-6 w-6 items-center justify-center rounded-full bg-line-2 text-xs font-medium text-ink-3'
             }
           >
             {rank}
@@ -43,11 +34,11 @@ export function DashboardPage() {
     },
     {
       header: 'Item',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+      cell: (row) => <span className="font-medium text-ink">{row.name}</span>,
     },
     {
       header: 'Code',
-      cell: (row) => <span className="text-slate-500">{row.itemCode}</span>,
+      cell: (row) => <span className="text-ink-3">{row.itemCode}</span>,
     },
     {
       header: 'Qty Sold',
@@ -61,10 +52,10 @@ export function DashboardPage() {
         const pct = Math.max(2, Math.round((Number(row.revenue) / topRevenue) * 100))
         return (
           <div className="flex items-center justify-end gap-3">
-            <div className="hidden h-1.5 w-24 overflow-hidden rounded-full bg-slate-100 sm:block">
-              <div className="h-full rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
+            <div className="hidden h-1.5 w-24 overflow-hidden rounded-full bg-line-2 sm:block">
+              <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
             </div>
-            <span className="font-medium text-slate-800">{formatCurrency(row.revenue)}</span>
+            <span className="font-medium text-ink">{formatCurrency(row.revenue)}</span>
           </div>
         )
       },
@@ -72,12 +63,12 @@ export function DashboardPage() {
   ]
 
   return (
-    <div className="space-y-6">
+      <div className="space-y-5">
       <div>
-        <h2 className="text-lg font-semibold text-slate-800">
+        <h1 className="text-xl font-semibold text-ink">
           Welcome back, {user?.fullName?.split(' ')[0] ?? 'there'}
-        </h2>
-        <p className="text-sm text-slate-500">Here is what is happening across your store today.</p>
+        </h1>
+        <p className="text-sm text-ink-3">Here is what is happening across your store today.</p>
       </div>
 
       {loading && <Spinner />}
@@ -85,56 +76,65 @@ export function DashboardPage() {
 
       {data && (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              label="Today's Sales"
-              value={formatCurrency(data.today.sales)}
-              hint={`${data.today.invoiceCount} invoice(s) · ${formatCurrency(data.today.collected)} collected`}
-              icon={<TrendingUp size={18} />}
-              tone="indigo"
-            />
-            <StatCard
-              label="This Month"
-              value={formatCurrency(data.month.sales)}
-              hint={`${data.month.invoiceCount} invoice(s) · VAT ${formatCurrency(data.month.tax)}`}
-              icon={<Receipt size={18} />}
-              tone="emerald"
-            />
-            <StatCard
-              label="Receivable"
-              value={formatCurrency(data.totals.receivable)}
-              hint="Outstanding from customers"
-              icon={<ArrowDownLeft size={18} />}
-              tone="amber"
-            />
-            <StatCard
-              label="Payable"
-              value={formatCurrency(data.totals.payable)}
-              hint="Outstanding to suppliers"
-              icon={<ArrowUpRight size={18} />}
-              tone="red"
-            />
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
+            <Card className="grid gap-5 bg-[#0e5a4a] p-5 text-white sm:grid-cols-2 sm:items-center">
+              <div>
+                <p className="text-xs font-medium text-white/70">Today&apos;s sales</p>
+                <p className="mt-1 text-3xl font-semibold">{formatCurrency(data.today.sales)}</p>
+                <p className="mt-1 text-xs text-white/75">
+                  {data.today.invoiceCount} invoices · {formatCurrency(data.today.collected)} collected
+                </p>
+              </div>
+              <div className="border-t border-white/20 pt-4 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
+                <p className="text-xs font-medium text-white/70">This month</p>
+                <p className="mt-1 text-2xl font-semibold">{formatCurrency(data.month.sales)}</p>
+                <p className="mt-1 text-xs text-white/75">
+                  {data.month.invoiceCount} invoices · VAT {formatCurrency(data.month.tax)}
+                </p>
+              </div>
+            </Card>
+
+            <Card className="p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium text-ink-3">Outstanding balances</p>
+                  <p className="mt-1 text-sm font-semibold text-ink">Receivable and payable</p>
+                </div>
+                <Receipt size={17} className="text-accent-2" />
+              </div>
+              <div className="mt-4 flex h-2 overflow-hidden rounded-sm bg-line-2" aria-hidden="true">
+                <span className="bg-accent" style={{ width: `${(Number(data.totals.receivable) + Number(data.totals.payable)) > 0 ? (Number(data.totals.receivable) / (Number(data.totals.receivable) + Number(data.totals.payable))) * 100 : 50}%` }} />
+                <span className="bg-brand-amber" style={{ width: `${(Number(data.totals.receivable) + Number(data.totals.payable)) > 0 ? (Number(data.totals.payable) / (Number(data.totals.receivable) + Number(data.totals.payable))) * 100 : 50}%` }} />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[11px] text-ink-3">Receivable</p>
+                  <p className="mt-0.5 text-sm font-semibold text-ink">{formatCurrency(data.totals.receivable)}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-ink-3">Payable</p>
+                  <p className="mt-0.5 text-sm font-semibold text-ink">{formatCurrency(data.totals.payable)}</p>
+                </div>
+              </div>
+            </Card>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard
-              label="Customers"
-              value={String(data.totals.customers)}
-              icon={<Users size={18} />}
-              tone="slate"
-            />
-            <StatCard
-              label="Active Items"
-              value={String(data.totals.items)}
-              icon={<Package size={18} />}
-              tone="slate"
-            />
-            <StatCard
-              label="Low Stock Alerts"
-              value={String(data.totals.lowStock)}
-              icon={data.totals.lowStock > 0 ? <AlertTriangle size={18} /> : <Boxes size={18} />}
-              tone={data.totals.lowStock > 0 ? 'red' : 'slate'}
-            />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {[
+              { label: 'Customers', value: data.totals.customers, icon: <Package size={16} /> },
+              { label: 'Active items', value: data.totals.items, icon: <Boxes size={16} /> },
+              { label: 'Low stock alerts', value: data.totals.lowStock, icon: <AlertTriangle size={16} /> },
+            ].map((stat) => (
+              <Card key={stat.label} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div>
+                  <p className="text-[11px] font-medium text-ink-3">{stat.label}</p>
+                  <p className="mt-0.5 text-lg font-semibold text-ink">{stat.value}</p>
+                </div>
+                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-soft text-accent-2">
+                  {stat.icon}
+                </span>
+              </Card>
+            ))}
           </div>
 
           <Card>
@@ -142,7 +142,7 @@ export function DashboardPage() {
               title="Top Selling Items"
               subtitle="Your best performers by quantity sold"
               action={
-                <span className="flex items-center gap-1.5 text-xs text-slate-400">
+                <span className="flex items-center gap-1.5 text-xs text-ink-3">
                   <TrendingUp size={14} /> Top 10
                 </span>
               }

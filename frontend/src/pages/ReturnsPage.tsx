@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Eye, Plus, RotateCcw, Search } from 'lucide-react'
+import { Eye, Plus, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
-import { DataTable } from '@/components/ui/DataTable'
-import type { Column } from '@/components/ui/DataTable'
+import { FeedList, initials } from '@/components/ui/FeedList'
+import type { FeedColumn } from '@/components/ui/FeedList'
 import { Field, Input, Select, Textarea } from '@/components/ui/Input'
+import { DateRangePresets } from '@/components/ui/DateRangePresets'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { ErrorState, Spinner } from '@/components/ui/Feedback'
@@ -134,7 +134,7 @@ function TabButton({
       onClick={onClick}
       className={cn(
         'rounded-lg px-4 py-1.5 text-sm font-medium transition-colors',
-        active ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100',
+        active ? 'bg-accent text-white shadow-sm' : 'text-ink-2 hover:bg-line-2 hover:text-ink',
       )}
     >
       {children}
@@ -159,7 +159,7 @@ function QtyInput({
       step="0.01"
       value={value}
       onChange={(event) => onChange(Math.min(Math.max(toNumber(event.target.value), 0), max))}
-      className="h-8 w-24 rounded-lg border border-slate-300 px-2 text-right text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+      className="h-8 w-24 rounded-lg border border-line bg-white px-2 text-right text-xs text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
     />
   )
 }
@@ -169,7 +169,7 @@ export function ReturnsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex w-fit items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+      <div className="flex w-fit items-center gap-1 rounded-xl border border-line bg-white/70 p-1 shadow-sm">
         <TabButton active={tab === 'sales'} onClick={() => setTab('sales')}>
           Sales Returns
         </TabButton>
@@ -185,17 +185,16 @@ export function ReturnsPage() {
 
 function SalesReturnsTab() {
   const [filters, setFilters] = useState({ from: monthStartIso, to: todayIso, customer: '' })
-  const [applied, setApplied] = useState(filters)
 
   const query = useMemo(() => {
     const params = new URLSearchParams()
-    params.set('from', applied.from)
-    params.set('to', applied.to)
-    if (applied.customer) params.set('customerId', applied.customer)
+    params.set('from', filters.from)
+    params.set('to', filters.to)
+    if (filters.customer) params.set('customerId', filters.customer)
     params.set('page', '1')
     params.set('limit', '50')
     return params.toString()
-  }, [applied])
+  }, [filters])
 
   const { data, loading, error, reload } = useFetch<Paginated<SalesReturnRow>>(
     `/returns/sales?${query}`,
@@ -376,119 +375,118 @@ function SalesReturnsTab() {
     }
   }
 
-  const columns: Column<SalesReturnRow>[] = [
-    {
-      header: 'Return #',
-      cell: (row) => <span className="font-medium text-slate-800">{row.returnNumber}</span>,
-    },
-    { header: 'Date', cell: (row) => formatDate(row.returnDate) },
-    { header: 'Customer', cell: (row) => row.customer?.name ?? '—' },
+  const columns: FeedColumn<SalesReturnRow>[] = [
     {
       header: 'Original invoice',
-      cell: (row) =>
-        invoiceNumbers.get(String(row.originalInvoiceId)) ?? `#${row.originalInvoiceId}`,
-    },
-    {
-      header: 'Refund amount',
-      align: 'right',
-      cell: (row) => <span className="font-medium text-slate-800">{formatCurrency(row.refundAmount)}</span>,
-    },
-    {
-      header: 'Refund method',
+      width: '170px',
+      hideOnMobile: true,
       cell: (row) => (
-        <span className="capitalize text-slate-600">
-          {row.refundMethod?.replace('_', ' ') ?? '—'}
+        <span className="fv text-ink-2">
+          {invoiceNumbers.get(String(row.originalInvoiceId)) ?? `#${row.originalInvoiceId}`}
         </span>
       ),
     },
     {
-      header: 'Actions',
+      header: 'Refund amount',
+      width: '140px',
       align: 'right',
+      cell: (row) => <span className="fv font-semibold text-ink">{formatCurrency(row.refundAmount)}</span>,
+    },
+    {
+      header: 'Refund method',
+      width: '150px',
+      hideOnMobile: true,
       cell: (row) => (
-        <Button
-          variant="outline"
-          size="sm"
-          icon={<Eye size={14} />}
-          onClick={() => void openDetail(row.id)}
-        >
-          View
-        </Button>
+        <span className="fv capitalize text-ink-3">
+          {row.refundMethod?.replace('_', ' ') ?? '—'}
+        </span>
       ),
     },
   ]
 
   return (
     <div className="space-y-4">
-      <Card className="p-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="From">
-            <Input
-              type="date"
-              value={filters.from}
-              onChange={(e) => setFilters((prev) => ({ ...prev, from: e.target.value }))}
-            />
-          </Field>
-          <Field label="To">
-            <Input
-              type="date"
-              value={filters.to}
-              onChange={(e) => setFilters((prev) => ({ ...prev, to: e.target.value }))}
-            />
-          </Field>
-          <Field label="Customer">
-            <Select
-              value={filters.customer}
-              onChange={(e) => setFilters((prev) => ({ ...prev, customer: e.target.value }))}
-            >
-              <option value="">All customers</option>
-              {(customers?.data ?? []).map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="flex items-end gap-2">
-            <Button
-              className="flex-1"
-              icon={<Search size={16} />}
-              onClick={() => setApplied(filters)}
-            >
-              Search
-            </Button>
-            <Button
-              variant="outline"
-              icon={<RotateCcw size={14} />}
-              onClick={() => {
-                const reset = { from: monthStartIso, to: todayIso, customer: '' }
-                setFilters(reset)
-                setApplied(reset)
-              }}
-            >
-              Clear
-            </Button>
+      <FeedList
+        rows={rows}
+        rowKey={(row) => row.id}
+        columns={columns}
+        lead={(row) => initials(row.customer?.name ?? 'Walk-in')}
+        title={(row) => row.returnNumber}
+        subtitle={(row) => row.customer?.name ?? 'Walk-in'}
+        onRowClick={(row) => void openDetail(row.id)}
+        rowAction={(row) => (
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<Eye size={14} />}
+            onClick={() => void openDetail(row.id)}
+          >
+            View
+          </Button>
+        )}
+        groupByDate={(row) => (row.returnDate ? row.returnDate.slice(0, 10) : '—')}
+        dayLabel={(groupRows) => {
+          const total = groupRows.reduce((sum, row) => sum + toNumber(row.refundAmount), 0)
+          return {
+            label: formatDate(groupRows[0].returnDate),
+            meta: `${groupRows.length} return${groupRows.length === 1 ? '' : 's'} · ${formatCurrency(total)}`,
+          }
+        }}
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyTitle="No sales returns"
+        emptyDescription="Refund a customer by creating a return against an existing invoice."
+        emptyIcon={<RotateCcw size={20} />}
+        toolbar={
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="From">
+              <Input
+                type="date"
+                value={filters.from}
+                onChange={(e) => setFilters((prev) => ({ ...prev, from: e.target.value }))}
+              />
+            </Field>
+            <Field label="To">
+              <Input
+                type="date"
+                value={filters.to}
+                onChange={(e) => setFilters((prev) => ({ ...prev, to: e.target.value }))}
+              />
+            </Field>
+            <Field label="Customer">
+              <Select
+                value={filters.customer}
+                onChange={(e) => setFilters((prev) => ({ ...prev, customer: e.target.value }))}
+              >
+                <option value="">All customers</option>
+                {(customers?.data ?? []).map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="ml-auto flex items-end gap-2">
+              <DateRangePresets
+                from={filters.from}
+                to={filters.to}
+                onPick={(range) => setFilters((prev) => ({ ...prev, ...range }))}
+              />
+              <Button
+                variant="outline"
+                icon={<RotateCcw size={14} />}
+                onClick={() => setFilters({ from: monthStartIso, to: todayIso, customer: '' })}
+              >
+                Clear
+              </Button>
+              <Button icon={<Plus size={16} />} onClick={openCreate}>
+                New Sales Return
+              </Button>
+            </div>
           </div>
-        </div>
-      </Card>
-
-      <div className="flex items-center justify-end">
-        <Button icon={<Plus size={16} />} onClick={openCreate}>
-          New Sales Return
-        </Button>
-      </div>
-
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(row) => row.id}
-          loading={loading}
-          error={error}
-          onRetry={reload}
-          emptyTitle="No sales returns"
-          emptyDescription="Refund a customer by creating a return against an existing invoice."
-        />
-      </Card>
+        }
+      />
 
       <Modal
         open={openId !== null}
@@ -517,14 +515,14 @@ function SalesReturnsTab() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <dl className="space-y-1.5 text-sm">
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Customer</dt>
-                  <dd className="text-right font-medium text-slate-800">
+                  <dt className="text-ink-3">Customer</dt>
+                  <dd className="text-right font-medium text-ink">
                     {detail.customer?.name ?? '—'}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Original invoice</dt>
-                  <dd className="text-right text-slate-700">
+                  <dt className="text-ink-3">Original invoice</dt>
+                  <dd className="text-right text-ink-2">
                     {detail.originalInvoice?.invoiceNumber ??
                       invoiceNumbers.get(String(detail.originalInvoiceId)) ??
                       `#${detail.originalInvoiceId}`}
@@ -533,61 +531,49 @@ function SalesReturnsTab() {
               </dl>
               <dl className="space-y-1.5 text-sm">
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Return date</dt>
-                  <dd className="text-right text-slate-700">{formatDate(detail.returnDate)}</dd>
+                  <dt className="text-ink-3">Return date</dt>
+                  <dd className="text-right text-ink-2">{formatDate(detail.returnDate)}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Refund method</dt>
-                  <dd className="text-right capitalize text-slate-700">
+                  <dt className="text-ink-3">Refund method</dt>
+                  <dd className="text-right capitalize text-ink-2">
                     {detail.refundMethod?.replace('_', ' ') ?? '—'}
                   </dd>
                 </div>
               </dl>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Item
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Qty
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Unit price
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Tax
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Line total
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Disposition
-                    </th>
+            <div className="overflow-x-auto rounded-xl border border-line">
+              <table className="min-w-full text-[13px]">
+                <thead>
+                  <tr className="border-b border-line">
+                    <th className="px-3 py-2 text-left text-[12.5px] font-medium text-ink-3">Item</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Qty</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Unit price</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Tax</th>
+                    <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Line total</th>
+                    <th className="px-3 py-2 text-left text-[12.5px] font-medium text-ink-3">Disposition</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {detail.items.map((line) => (
-                    <tr key={line.id}>
-                      <td className="px-3 py-2 font-medium text-slate-800">
+                    <tr key={line.id} className="border-t border-line-2">
+                      <td className="px-3 py-2 font-medium text-ink">
                         {line.item?.name ?? `Item #${line.itemId}`}
                       </td>
-                      <td className="px-3 py-2 text-right text-slate-700">
+                      <td className="px-3 py-2 text-right text-ink-2">
                         {formatNumber(line.returnedQty, 2)}
                       </td>
-                      <td className="px-3 py-2 text-right text-slate-700">
+                      <td className="px-3 py-2 text-right text-ink-2">
                         {formatCurrency(line.unitPrice)}
                       </td>
-                      <td className="px-3 py-2 text-right text-slate-700">
+                      <td className="px-3 py-2 text-right text-ink-2">
                         {formatCurrency(line.taxAmount)}
                       </td>
-                      <td className="px-3 py-2 text-right font-medium text-slate-800">
+                      <td className="px-3 py-2 text-right font-medium text-ink">
                         {formatCurrency(line.lineTotal)}
                       </td>
-                      <td className="px-3 py-2 capitalize text-slate-600">
+                      <td className="px-3 py-2 capitalize text-ink-3">
                         {line.disposition.replace('_', ' ')}
                       </td>
                     </tr>
@@ -597,30 +583,30 @@ function SalesReturnsTab() {
             </div>
 
             <dl className="ml-auto w-full space-y-1.5 text-sm sm:max-w-xs">
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-ink-3">
                 <dt>Subtotal</dt>
                 <dd>{formatCurrency(detail.subtotal)}</dd>
               </div>
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-ink-3">
                 <dt>VAT</dt>
                 <dd>{formatCurrency(detail.taxAmount)}</dd>
               </div>
-              <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold text-slate-900">
+              <div className="flex justify-between border-t border-line pt-2 text-base font-semibold text-ink">
                 <dt>Total refund</dt>
                 <dd>{formatCurrency(detail.totalAmount)}</dd>
               </div>
             </dl>
 
             {detail.creditNotes.length > 0 && (
-              <div className="rounded-xl border border-slate-200 p-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <div className="rounded-xl border border-line p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">
                   Credit notes
                 </p>
                 <ul className="space-y-1.5 text-sm">
                   {detail.creditNotes.map((note) => (
                     <li key={note.id} className="flex justify-between">
-                      <span className="text-slate-600">{note.cnNumber}</span>
-                      <span className="font-medium text-slate-800">{formatCurrency(note.amount)}</span>
+                      <span className="text-ink-2">{note.cnNumber}</span>
+                      <span className="font-medium text-ink">{formatCurrency(note.amount)}</span>
                     </li>
                   ))}
                 </ul>
@@ -628,12 +614,12 @@ function SalesReturnsTab() {
             )}
 
             {detail.returnReason && (
-              <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <div className="rounded-xl bg-line-2 px-3 py-2 text-xs text-ink-2">
                 {detail.returnReason}
               </div>
             )}
 
-            <p className="text-[11px] text-slate-400">Created {formatDateTime(detail.createdAt)}</p>
+            <p className="text-[11px] text-ink-3">Created {formatDateTime(detail.createdAt)}</p>
           </div>
         )}
       </Modal>
@@ -656,7 +642,9 @@ function SalesReturnsTab() {
       >
         <div className="space-y-5">
           {formError && (
-            <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</div>
+            <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">
+              {formError}
+            </div>
           )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -690,44 +678,36 @@ function SalesReturnsTab() {
 
           {invoice && (
             <>
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Item
-                      </th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Sold
-                      </th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Remaining
-                      </th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Return qty
-                      </th>
+              <div className="overflow-x-auto rounded-xl border border-line">
+                <table className="min-w-full text-[13px]">
+                  <thead>
+                    <tr className="border-b border-line">
+                      <th className="px-3 py-2 text-left text-[12.5px] font-medium text-ink-3">Item</th>
+                      <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Sold</th>
+                      <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Remaining</th>
+                      <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Return qty</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {invoice.items.map((line) => {
                       const remaining = Math.max(
                         0,
                         toNumber(line.quantity) - toNumber(line.returnedQty),
                       )
                       return (
-                        <tr key={line.id}>
+                        <tr key={line.id} className="border-t border-line-2">
                           <td className="px-3 py-2">
-                            <p className="font-medium text-slate-800">
+                            <p className="font-medium text-ink">
                               {line.item?.name ?? `Item #${line.itemId}`}
                             </p>
-                            <p className="text-xs text-slate-400">
+                            <p className="text-xs text-ink-3">
                               {formatCurrency(line.unitPrice)} each
                             </p>
                           </td>
-                          <td className="px-3 py-2 text-right text-slate-700">
+                          <td className="px-3 py-2 text-right text-ink-2">
                             {formatNumber(line.quantity, 2)}
                           </td>
-                          <td className="px-3 py-2 text-right text-slate-700">
+                          <td className="px-3 py-2 text-right text-ink-2">
                             {formatNumber(remaining, 2)}
                           </td>
                           <td className="px-3 py-2 text-right">
@@ -783,17 +763,16 @@ function SalesReturnsTab() {
 
 function PurchaseReturnsTab() {
   const [filters, setFilters] = useState({ from: monthStartIso, to: todayIso, supplier: '' })
-  const [applied, setApplied] = useState(filters)
 
   const query = useMemo(() => {
     const params = new URLSearchParams()
-    params.set('from', applied.from)
-    params.set('to', applied.to)
-    if (applied.supplier) params.set('supplierId', applied.supplier)
+    params.set('from', filters.from)
+    params.set('to', filters.to)
+    if (filters.supplier) params.set('supplierId', filters.supplier)
     params.set('page', '1')
     params.set('limit', '50')
     return params.toString()
-  }, [applied])
+  }, [filters])
 
   const { data, loading, error, reload } = useFetch<Paginated<PurchaseReturnRow>>(
     `/returns/purchases?${query}`,
@@ -876,25 +855,26 @@ function PurchaseReturnsTab() {
     }
   }
 
-  const columns: Column<PurchaseReturnRow>[] = [
-    {
-      header: 'Return #',
-      cell: (row) => <span className="font-medium text-slate-800">{row.returnNumber}</span>,
-    },
-    { header: 'Date', cell: (row) => formatDate(row.returnDate) },
-    { header: 'Supplier', cell: (row) => row.supplier?.name ?? '—' },
+  const columns: FeedColumn<PurchaseReturnRow>[] = [
     {
       header: 'Original invoice',
-      cell: (row) =>
-        invoiceNumbers.get(String(row.originalInvoiceId)) ?? `#${row.originalInvoiceId}`,
+      width: '170px',
+      hideOnMobile: true,
+      cell: (row) => (
+        <span className="fv text-ink-2">
+          {invoiceNumbers.get(String(row.originalInvoiceId)) ?? `#${row.originalInvoiceId}`}
+        </span>
+      ),
     },
     {
       header: 'Amount',
+      width: '140px',
       align: 'right',
-      cell: (row) => <span className="font-medium text-slate-800">{formatCurrency(row.totalAmount)}</span>,
+      cell: (row) => <span className="fv font-semibold text-ink">{formatCurrency(row.totalAmount)}</span>,
     },
     {
       header: 'Status',
+      width: '120px',
       align: 'center',
       cell: (row) => (
         <Badge tone={row.status === 'completed' ? 'green' : 'amber'}>
@@ -906,76 +886,76 @@ function PurchaseReturnsTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="From">
-            <Input
-              type="date"
-              value={filters.from}
-              onChange={(e) => setFilters((prev) => ({ ...prev, from: e.target.value }))}
-            />
-          </Field>
-          <Field label="To">
-            <Input
-              type="date"
-              value={filters.to}
-              onChange={(e) => setFilters((prev) => ({ ...prev, to: e.target.value }))}
-            />
-          </Field>
-          <Field label="Supplier">
-            <Select
-              value={filters.supplier}
-              onChange={(e) => setFilters((prev) => ({ ...prev, supplier: e.target.value }))}
-            >
-              <option value="">All suppliers</option>
-              {(suppliers?.data ?? []).map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="flex items-end gap-2">
-            <Button
-              className="flex-1"
-              icon={<Search size={16} />}
-              onClick={() => setApplied(filters)}
-            >
-              Search
-            </Button>
-            <Button
-              variant="outline"
-              icon={<RotateCcw size={14} />}
-              onClick={() => {
-                const reset = { from: monthStartIso, to: todayIso, supplier: '' }
-                setFilters(reset)
-                setApplied(reset)
-              }}
-            >
-              Clear
-            </Button>
+      <FeedList
+        rows={rows}
+        rowKey={(row) => row.id}
+        columns={columns}
+        lead={(row) => initials(row.supplier?.name ?? 'Supplier')}
+        title={(row) => row.returnNumber}
+        subtitle={(row) => row.supplier?.name ?? 'Supplier'}
+        groupByDate={(row) => (row.returnDate ? row.returnDate.slice(0, 10) : '—')}
+        dayLabel={(groupRows) => {
+          const total = groupRows.reduce((sum, row) => sum + toNumber(row.totalAmount), 0)
+          return {
+            label: formatDate(groupRows[0].returnDate),
+            meta: `${groupRows.length} return${groupRows.length === 1 ? '' : 's'} · ${formatCurrency(total)}`,
+          }
+        }}
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyTitle="No purchase returns"
+        emptyDescription="Return goods to a supplier against an existing purchase invoice."
+        emptyIcon={<RotateCcw size={20} />}
+        toolbar={
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="From">
+              <Input
+                type="date"
+                value={filters.from}
+                onChange={(e) => setFilters((prev) => ({ ...prev, from: e.target.value }))}
+              />
+            </Field>
+            <Field label="To">
+              <Input
+                type="date"
+                value={filters.to}
+                onChange={(e) => setFilters((prev) => ({ ...prev, to: e.target.value }))}
+              />
+            </Field>
+            <Field label="Supplier">
+              <Select
+                value={filters.supplier}
+                onChange={(e) => setFilters((prev) => ({ ...prev, supplier: e.target.value }))}
+              >
+                <option value="">All suppliers</option>
+                {(suppliers?.data ?? []).map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="ml-auto flex items-end gap-2">
+              <DateRangePresets
+                from={filters.from}
+                to={filters.to}
+                onPick={(range) => setFilters((prev) => ({ ...prev, ...range }))}
+              />
+              <Button
+                variant="outline"
+                icon={<RotateCcw size={14} />}
+                onClick={() => setFilters({ from: monthStartIso, to: todayIso, supplier: '' })}
+              >
+                Clear
+              </Button>
+              <Button icon={<Plus size={16} />} onClick={openCreate}>
+                New Purchase Return
+              </Button>
+            </div>
           </div>
-        </div>
-      </Card>
-
-      <div className="flex items-center justify-end">
-        <Button icon={<Plus size={16} />} onClick={openCreate}>
-          New Purchase Return
-        </Button>
-      </div>
-
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(row) => row.id}
-          loading={loading}
-          error={error}
-          onRetry={reload}
-          emptyTitle="No purchase returns"
-          emptyDescription="Return goods to a supplier against an existing purchase invoice."
-        />
-      </Card>
+        }
+      />
 
       <Modal
         open={createOpen}
@@ -995,7 +975,9 @@ function PurchaseReturnsTab() {
       >
         <div className="space-y-5">
           {formError && (
-            <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</div>
+            <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">
+              {formError}
+            </div>
           )}
 
           <Field label="Original purchase invoice" required hint="Pick the purchase being returned">
@@ -1014,44 +996,36 @@ function PurchaseReturnsTab() {
 
           {invoice && (
             <>
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Item
-                      </th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Purchased
-                      </th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Remaining
-                      </th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Return qty
-                      </th>
+              <div className="overflow-x-auto rounded-xl border border-line">
+                <table className="min-w-full text-[13px]">
+                  <thead>
+                    <tr className="border-b border-line">
+                      <th className="px-3 py-2 text-left text-[12.5px] font-medium text-ink-3">Item</th>
+                      <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Purchased</th>
+                      <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Remaining</th>
+                      <th className="px-3 py-2 text-right text-[12.5px] font-medium text-ink-3">Return qty</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {invoice.items.map((line) => {
                       const remaining = Math.max(
                         0,
                         toNumber(line.quantity) - toNumber(line.returnedQty),
                       )
                       return (
-                        <tr key={line.id}>
+                        <tr key={line.id} className="border-t border-line-2">
                           <td className="px-3 py-2">
-                            <p className="font-medium text-slate-800">
+                            <p className="font-medium text-ink">
                               {line.item?.name ?? `Item #${line.itemId}`}
                             </p>
-                            <p className="text-xs text-slate-400">
+                            <p className="text-xs text-ink-3">
                               {formatCurrency(line.unitCost ?? '0')} each
                             </p>
                           </td>
-                          <td className="px-3 py-2 text-right text-slate-700">
+                          <td className="px-3 py-2 text-right text-ink-2">
                             {formatNumber(line.quantity, 2)}
                           </td>
-                          <td className="px-3 py-2 text-right text-slate-700">
+                          <td className="px-3 py-2 text-right text-ink-2">
                             {formatNumber(remaining, 2)}
                           </td>
                           <td className="px-3 py-2 text-right">

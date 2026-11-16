@@ -3,8 +3,8 @@ import type { FormEvent } from 'react'
 import { Plus, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardHeader } from '@/components/ui/Card'
-import { DataTable } from '@/components/ui/DataTable'
-import type { Column } from '@/components/ui/DataTable'
+import { FeedList, initials } from '@/components/ui/FeedList'
+import type { FeedColumn } from '@/components/ui/FeedList'
 import { Field, Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
@@ -127,29 +127,28 @@ export function UsersPage() {
     }
   }
 
-  const columns: Column<UserRecord>[] = [
-    {
-      header: 'Full Name',
-      cell: (row) => (
-        <div>
-          <p className="font-medium text-slate-800">{row.fullName}</p>
-          <p className="font-mono text-xs text-slate-400">{row.username}</p>
-        </div>
-      ),
-    },
-    { header: 'Email', cell: (row) => row.email ?? '—' },
+  const columns: FeedColumn<UserRecord>[] = [
+    { header: 'Email', hideOnMobile: true, cell: (row) => row.email ?? '—' },
     {
       header: 'Role',
+      width: '190px',
       cell: (row) => <Badge tone="indigo">{row.role?.name ?? '—'}</Badge>,
     },
     {
       header: 'Status',
+      width: '120px',
       align: 'center',
       cell: (row) => (
         <Badge tone={row.status === 'active' ? 'green' : 'slate'}>{row.status}</Badge>
       ),
     },
-    { header: 'Last Login', cell: (row) => formatDateTime(row.lastLogin) },
+    {
+      header: 'Last Login',
+      width: '190px',
+      align: 'right',
+      hideOnMobile: true,
+      cell: (row) => <span className="text-ink-2">{formatDateTime(row.lastLogin)}</span>,
+    },
   ]
 
   function update<K extends keyof typeof EMPTY_FORM>(key: K, value: string) {
@@ -188,24 +187,27 @@ export function UsersPage() {
         </div>
       )}
 
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={data ?? []}
-          rowKey={(row) => row.id}
-          loading={loading}
-          error={error}
-          onRetry={reload}
-          emptyTitle="No users found"
-        />
-      </Card>
+      <FeedList
+        rows={data ?? []}
+        rowKey={(row) => row.id}
+        columns={columns}
+        lead={(row) => initials(row.fullName)}
+        title={(row) => row.fullName}
+        subtitle={(row) => row.username}
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyTitle="No users found"
+        emptyDescription="Create a user to grant them access to the POS."
+        emptyIcon={<ShieldCheck size={20} />}
+      />
 
       {canManageRoles && (
         <Card>
           <CardHeader
             title="Roles & Permissions"
             subtitle="Pick a role, then tick the modules and actions it is allowed to use."
-            action={<ShieldCheck size={18} className="text-blue-600" />}
+            action={<ShieldCheck size={18} className="text-accent" />}
           />
           <div className="space-y-4 p-5">
             <Field label="Role" className="max-w-sm">
@@ -220,20 +222,20 @@ export function UsersPage() {
             </Field>
 
             {!selectedRole ? (
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-ink-3">
                 Select a role above to review or change what it can access.
               </p>
             ) : roleLocked ? (
-              <div className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+              <div className="rounded-lg bg-soft px-3 py-2 text-xs text-accent-2">
                 Super Administrator always has every permission and cannot be edited.
               </div>
             ) : (
               <>
                 {roleError && (
-                  <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{roleError}</div>
+                  <div className="rounded-lg bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">{roleError}</div>
                 )}
                 {roleSaved && (
-                  <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                  <div className="rounded-lg bg-[#e3f2ec] px-3 py-2 text-xs text-brand-green">
                     Permissions saved. Affected users see the change after refreshing the page.
                   </div>
                 )}
@@ -243,13 +245,13 @@ export function UsersPage() {
                     const keys = actions.map((action) => `${action.module}:${action.action}`)
                     const allSelected = keys.every((key) => draft.has(key))
                     return (
-                      <div key={module} className="rounded-xl border border-slate-200 p-3">
+                      <div key={module} className="rounded-xl border border-line p-3">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-slate-800">{moduleLabel(module)}</p>
+                          <p className="text-sm font-semibold text-ink">{moduleLabel(module)}</p>
                           <button
                             type="button"
                             onClick={() => toggleModule(actions, !allSelected)}
-                            className="text-xs font-medium text-blue-600 hover:underline"
+                            className="text-xs font-medium text-accent hover:underline"
                           >
                             {allSelected ? 'Clear' : 'Select all'}
                           </button>
@@ -260,13 +262,13 @@ export function UsersPage() {
                             return (
                               <label
                                 key={key}
-                                className="flex cursor-pointer items-center gap-2 text-sm text-slate-600"
+                                className="flex cursor-pointer items-center gap-2 text-sm text-ink-2"
                               >
                                 <input
                                   type="checkbox"
                                   checked={draft.has(key)}
                                   onChange={() => togglePermission(key)}
-                                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                  className="h-4 w-4 rounded border-line text-accent focus:ring-accent/30"
                                 />
                                 {humanize(action.action)}
                               </label>
@@ -279,7 +281,7 @@ export function UsersPage() {
                 </div>
 
                 <div className="flex items-center justify-end gap-3">
-                  <p className="mr-auto text-xs text-slate-500">{draft.size} permission(s) selected</p>
+                  <p className="mr-auto text-xs text-ink-3">{draft.size} permission(s) selected</p>
                   <Button onClick={saveRolePermissions} loading={savingRole}>
                     Save Permissions
                   </Button>
@@ -307,7 +309,7 @@ export function UsersPage() {
       >
         <form id="user-form" onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {formError && (
-            <div className="sm:col-span-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+            <div className="sm:col-span-2 rounded-lg bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">
               {formError}
             </div>
           )}

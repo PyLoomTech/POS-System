@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../../middleware/auth';
 import {
-  getStockLevels, getStockLedger, getLowStockAlerts,
+  getStockLevels, getStockLedger, getLowStockAlerts, listWarehouses,
   createAdjustment, approveAdjustment
 } from './inventory.controller';
 
 export const inventoryRouter = Router();
 inventoryRouter.use(authenticate);
+inventoryRouter.get('/warehouses', authorize('inventory:view'), listWarehouses);
 inventoryRouter.get('/stock',          authorize('inventory:view'),   getStockLevels);
 inventoryRouter.get('/stock/:itemId/ledger', authorize('inventory:view'), getStockLedger);
 inventoryRouter.get('/low-stock',      authorize('inventory:view'),   getLowStockAlerts);

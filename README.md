@@ -73,6 +73,26 @@ and inventory movement history. Stock valuation and low-stock reports cover curr
 inventory, while receivables, payables, and the Day Book support daily accounting review.
 Inventory movement history shows the latest 500 records within the selected date range.
 
+## Bulk Item Import
+
+Users with item-create permission can open **Catalog → Bulk Item Import** and upload a
+CSV or XLSX file. Required columns are `Item Code`, `Item Name`, `Item Group`, `UOM`,
+and `Selling Rate`; optional columns are `Stock Qty`, `Valuation Rate`, `Warehouse`,
+and `Stock Item`. Item groups, units, and warehouses must already exist. A selected
+default warehouse is used unless a row specifies a warehouse.
+
+Validation previews each row before confirmation. Empty stock quantities leave stock
+unchanged. **Opening stock** sets the warehouse quantity to the imported amount;
+**Material receipt** adds it. A zero receipt does not post a stock movement. Price
+updates are optional; valuation rate is also used as stock cost when provided. The
+system records stock movements linked to the import batch so the existing stock ledger
+and POS stock balances reflect the posted quantities. Each unique file/default-warehouse
+combination is assigned a persistent batch ID and cannot post stock twice. The completed
+row-level report can be downloaded as CSV.
+
+This feature implements ERPNext-style stock posting semantics in this application; it
+does not connect to or create documents in an ERPNext site.
+
 ## Development Phases
 
 | Phase | Description              | Status     |

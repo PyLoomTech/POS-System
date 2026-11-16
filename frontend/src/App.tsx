@@ -6,6 +6,8 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { CustomersPage } from '@/pages/CustomersPage'
 import { SuppliersPage } from '@/pages/SuppliersPage'
 import { ItemsPage } from '@/pages/ItemsPage'
+import { ItemImportPage } from '@/pages/ItemImportPage'
+import { PriceListsUomPage } from '@/pages/PriceListsUomPage'
 import { CategoriesPage } from '@/pages/CategoriesPage'
 import { UsersPage } from '@/pages/UsersPage'
 import { PosPage } from '@/pages/PosPage'
@@ -34,6 +36,8 @@ function App() {
           <Route path="customers" element={<CustomersPage />} />
           <Route path="suppliers" element={<SuppliersPage />} />
           <Route path="items" element={<ItemsPage />} />
+          <Route path="item-import" element={<ItemImportPage />} />
+          <Route path="price-lists-uom" element={<PriceListsUomPage />} />
           <Route path="categories" element={<CategoriesPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="purchases" element={<PurchasesPage />} />

@@ -111,6 +111,7 @@ export async function createSalesReturn(req: AuthRequest, res: Response, next: N
           originalItemId: orig.id,
           itemId: orig.itemId,
           returnedQty: li.returnedQty,
+          conversionFactor: Number(orig.conversionFactor),
           unitPrice: orig.unitPrice,
           taxAmount: taxAmount.toDecimalPlaces(4).toNumber(),
           lineTotal: lineTotal.toDecimalPlaces(4).toNumber(),
@@ -135,7 +136,7 @@ export async function createSalesReturn(req: AuthRequest, res: Response, next: N
           refundAmount: data.refundMethod === 'credit_note' ? 0 : totalAmount.toNumber(),
           status: 'completed',
           processedBy: req.user?.id,
-          items: { create: lineData },
+          items: { create: lineData.map(({ conversionFactor: _factor, ...line }) => line) },
         },
       });
 
@@ -143,6 +144,7 @@ export async function createSalesReturn(req: AuthRequest, res: Response, next: N
       const warehouse = await tx.warehouse.findFirst({ where: { isDefault: true } })
         || await tx.warehouse.findFirst();
       for (const line of lineData) {
+        const baseQuantity = line.returnedQty * line.conversionFactor;
         await tx.salesInvoiceItem.update({
           where: { id: line.originalItemId },
           data: { returnedQty: { increment: line.returnedQty } },
@@ -155,11 +157,11 @@ export async function createSalesReturn(req: AuthRequest, res: Response, next: N
           if (balance) {
             await tx.stockBalance.update({
               where: { id: balance.id },
-              data: { quantity: { increment: line.returnedQty } },
+              data: { quantity: { increment: baseQuantity } },
             });
           } else {
             await tx.stockBalance.create({
-              data: { itemId: line.itemId, warehouseId: warehouse.id, quantity: line.returnedQty, averageCost: line.costAtSale || 0 },
+              data: { itemId: line.itemId, warehouseId: warehouse.id, quantity: baseQuantity, averageCost: line.costAtSale || 0 },
             });
           }
           await tx.inventoryMovement.create({
@@ -167,7 +169,7 @@ export async function createSalesReturn(req: AuthRequest, res: Response, next: N
               itemId: line.itemId,
               warehouseId: warehouse.id,
               movementType: 'return_in',
-              quantity: line.returnedQty,
+              quantity: baseQuantity,
               unitCost: Number(line.costAtSale || 0),
               referenceType: 'sales_return',
               referenceId: salesReturn.id,
@@ -304,6 +306,7 @@ export async function createPurchaseReturn(req: AuthRequest, res: Response, next
           originalItemId: orig.id,
           itemId: orig.itemId,
           returnedQty: li.returnedQty,
+          conversionFactor: Number(orig.conversionFactor),
           unitCost: orig.unitCost,
           lineTotal: lineTotal.toDecimalPlaces(4).toNumber(),
         });
@@ -319,7 +322,7 @@ export async function createPurchaseReturn(req: AuthRequest, res: Response, next
           totalAmount: totalAmount.toDecimalPlaces(2).toNumber(),
           status: 'completed',
           createdBy: req.user?.id,
-          items: { create: lineData },
+          items: { create: lineData.map(({ conversionFactor: _factor, ...line }) => line) },
         },
       });
 
@@ -327,6 +330,7 @@ export async function createPurchaseReturn(req: AuthRequest, res: Response, next
         || await tx.warehouse.findFirst();
 
       for (const line of lineData) {
+        const baseQuantity = line.returnedQty * line.conversionFactor;
         await tx.purchaseInvoiceItem.update({
           where: { id: line.originalItemId },
           data: { returnedQty: { increment: line.returnedQty } },
@@ -339,7 +343,7 @@ export async function createPurchaseReturn(req: AuthRequest, res: Response, next
           if (balance) {
             await tx.stockBalance.update({
               where: { id: balance.id },
-              data: { quantity: { decrement: line.returnedQty } },
+              data: { quantity: { decrement: baseQuantity } },
             });
           }
           await tx.inventoryMovement.create({
@@ -347,8 +351,8 @@ export async function createPurchaseReturn(req: AuthRequest, res: Response, next
               itemId: line.itemId,
               warehouseId: warehouse.id,
               movementType: 'return_out',
-              quantity: -line.returnedQty,
-              unitCost: Number(line.unitCost),
+              quantity: -baseQuantity,
+              unitCost: Number(line.unitCost) / line.conversionFactor,
               referenceType: 'purchase_return',
               referenceId: purchaseReturn.id,
               narration: `Purchase return ${returnNumber}`,

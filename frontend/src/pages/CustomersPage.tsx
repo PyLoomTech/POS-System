@@ -1,10 +1,9 @@
 import { useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent, FormEvent } from 'react'
-import { FileDown, FileText, IdCard, Pencil, Plus, Printer, Search, Trash2, Upload } from 'lucide-react'
+import { FileDown, FileText, IdCard, Pencil, Plus, Printer, Search, Trash2, Upload, Users } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
-import { DataTable } from '@/components/ui/DataTable'
-import type { Column } from '@/components/ui/DataTable'
+import { FeedList, initials } from '@/components/ui/FeedList'
+import type { FeedColumn } from '@/components/ui/FeedList'
 import { Field, Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
@@ -39,7 +38,6 @@ const EMPTY_FORM = {
 type CustomerForm = typeof EMPTY_FORM
 
 export function CustomersPage() {
-  const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const { data, loading, error, reload } = useFetch<Paginated<Customer>>(
     `/customers?limit=100${query ? `&search=${encodeURIComponent(query)}` : ''}`,
@@ -193,117 +191,112 @@ export function CustomersPage() {
     openPrintWindow(mode === 'pdf' ? 'Customers — PDF' : 'Customers — Print', html)
   }
 
-  const columns: Column<Customer>[] = [
+  const columns: FeedColumn<Customer>[] = [
     {
-      header: 'Code',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.customerCode ?? '—'}</span>,
+      header: 'Phone',
+      width: '140px',
+      hideOnMobile: true,
+      cell: (row) => <span className="fv">{row.phone ?? '—'}</span>,
     },
     {
-      header: 'Name',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+      header: 'PAN/VAT',
+      width: '140px',
+      hideOnMobile: true,
+      cell: (row) => <span className="fv">{row.panVatNumber ?? '—'}</span>,
     },
-    { header: 'Phone', cell: (row) => row.phone ?? '—' },
-    { header: 'PAN/VAT', cell: (row) => row.panVatNumber ?? '—' },
     {
       header: 'ID Card',
+      width: '180px',
+      hideOnMobile: true,
       cell: (row) => {
         const label = [row.idCardType, row.idCardNumber].filter(Boolean).join(' · ')
-        return <span className="text-slate-600">{label || '—'}</span>
+        return <span className="fv">{label || '—'}</span>
       },
     },
     {
       header: 'Credit Limit',
+      width: '130px',
       align: 'right',
-      cell: (row) => formatCurrency(row.creditLimit),
+      cell: (row) => <span className="fv">{formatCurrency(row.creditLimit)}</span>,
     },
     {
       header: 'Status',
+      width: '120px',
       align: 'center',
       cell: (row) => (
         <Badge tone={row.isActive ? 'green' : 'slate'}>{row.isActive ? 'Active' : 'Inactive'}</Badge>
-      ),
-    },
-    {
-      header: 'Actions',
-      align: 'right',
-      cell: (row) => (
-        <Button variant="outline" size="sm" icon={<Pencil size={14} />} onClick={() => openEdit(row)}>
-          Edit
-        </Button>
       ),
     },
   ]
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            setQuery(search.trim())
-          }}
-        >
-          <div className="relative">
-            <Search
-              size={16}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-            <Input
-              className="w-64 pl-9"
-              placeholder="Search name, phone, PAN…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
+      <FeedList
+        rows={rows}
+        rowKey={(row) => row.id}
+        columns={columns}
+        lead={(row) => initials(row.name)}
+        title={(row) => row.name}
+        subtitle={(row) => row.customerCode ?? '—'}
+        onRowClick={openEdit}
+        rowAction={(row) => (
+          <Button variant="outline" size="sm" icon={<Pencil size={14} />} onClick={() => openEdit(row)}>
+            Edit
+          </Button>
+        )}
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyIcon={<Users size={20} />}
+        emptyTitle="No customers found"
+        emptyDescription="Add your first customer to start recording sales."
+        toolbar={
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
+              />
+              <Input
+                className="w-64 pl-9"
+                placeholder="Search name, phone, PAN…"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                icon={<FileDown size={16} />}
+                loading={exporting}
+                disabled={rows.length === 0}
+                onClick={exportExcel}
+              >
+                Excel
+              </Button>
+              <Button
+                variant="outline"
+                icon={<FileText size={16} />}
+                disabled={rows.length === 0}
+                onClick={() => printCustomers('pdf')}
+              >
+                PDF
+              </Button>
+              <Button
+                variant="outline"
+                icon={<Printer size={16} />}
+                disabled={rows.length === 0}
+                onClick={() => printCustomers('print')}
+              >
+                Print
+              </Button>
+              <Button icon={<Plus size={16} />} onClick={openCreate}>
+                New Customer
+              </Button>
+            </div>
           </div>
-          <Button type="submit" variant="outline">
-            Search
-          </Button>
-        </form>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            icon={<FileDown size={16} />}
-            loading={exporting}
-            disabled={rows.length === 0}
-            onClick={exportExcel}
-          >
-            Excel
-          </Button>
-          <Button
-            variant="outline"
-            icon={<FileText size={16} />}
-            disabled={rows.length === 0}
-            onClick={() => printCustomers('pdf')}
-          >
-            PDF
-          </Button>
-          <Button
-            variant="outline"
-            icon={<Printer size={16} />}
-            disabled={rows.length === 0}
-            onClick={() => printCustomers('print')}
-          >
-            Print
-          </Button>
-          <Button icon={<Plus size={16} />} onClick={openCreate}>
-            New Customer
-          </Button>
-        </div>
-      </div>
-
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(row) => row.id}
-          loading={loading}
-          error={error}
-          onRetry={reload}
-          emptyTitle="No customers found"
-          emptyDescription="Add your first customer to start recording sales."
-        />
-      </Card>
+        }
+      />
 
       <Modal
         open={open}
@@ -323,7 +316,7 @@ export function CustomersPage() {
       >
         <form id="customer-form" onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {formError && (
-            <div className="sm:col-span-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+            <div className="sm:col-span-2 rounded-lg bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">
               {formError}
             </div>
           )}
@@ -360,8 +353,8 @@ export function CustomersPage() {
             />
           </Field>
 
-          <div className="sm:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-            <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <div className="sm:col-span-2 rounded-2xl border border-line bg-white/50 p-4">
+            <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-3">
               <IdCard size={14} /> Identity Card
             </p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -394,7 +387,7 @@ export function CustomersPage() {
                 onDrop={onDropDocument}
                 onClick={() => fileRef.current?.click()}
                 className={`flex h-36 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-dashed bg-white transition ${
-                  dragging ? 'border-blue-400 bg-blue-50' : 'border-slate-300'
+                  dragging ? 'border-accent bg-soft' : 'border-line'
                 }`}
               >
                 {form.idCardImageUrl ? (
@@ -404,7 +397,7 @@ export function CustomersPage() {
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <span className="flex flex-col items-center gap-1 text-slate-400">
+                  <span className="flex flex-col items-center gap-1 text-ink-3">
                     <IdCard size={22} />
                     <span className="text-[11px]">
                       {uploading ? 'Uploading…' : 'Drag & drop document'}
@@ -444,7 +437,7 @@ export function CustomersPage() {
                     </Button>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-ink-3">
                   Upload an image (JPG, PNG or WEBP, up to 5 MB) of the identity document.
                 </p>
               </div>

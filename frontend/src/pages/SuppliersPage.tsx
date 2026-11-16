@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, UsersRound } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
-import { DataTable } from '@/components/ui/DataTable'
-import type { Column } from '@/components/ui/DataTable'
+import { FeedList, initials } from '@/components/ui/FeedList'
+import type { FeedColumn } from '@/components/ui/FeedList'
 import { Field, Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
@@ -24,7 +23,6 @@ const EMPTY_FORM = {
 }
 
 export function SuppliersPage() {
-  const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const { data, loading, error, reload } = useFetch<Paginated<Supplier>>(
     `/suppliers?limit=100${query ? `&search=${encodeURIComponent(query)}` : ''}`,
@@ -35,25 +33,34 @@ export function SuppliersPage() {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  const columns: Column<Supplier>[] = [
+  const columns: FeedColumn<Supplier>[] = [
     {
-      header: 'Code',
-      cell: (row) => <span className="font-mono text-xs text-slate-500">{row.supplierCode ?? '—'}</span>,
+      header: 'Contact',
+      width: '150px',
+      hideOnMobile: true,
+      cell: (row) => <span className="fv">{row.contactPerson ?? '—'}</span>,
     },
     {
-      header: 'Name',
-      cell: (row) => <span className="font-medium text-slate-800">{row.name}</span>,
+      header: 'Phone',
+      width: '140px',
+      hideOnMobile: true,
+      cell: (row) => <span className="fv">{row.phone ?? '—'}</span>,
     },
-    { header: 'Contact', cell: (row) => row.contactPerson ?? '—' },
-    { header: 'Phone', cell: (row) => row.phone ?? '—' },
-    { header: 'PAN/VAT', cell: (row) => row.panVatNumber ?? '—' },
+    {
+      header: 'PAN/VAT',
+      width: '140px',
+      hideOnMobile: true,
+      cell: (row) => <span className="fv">{row.panVatNumber ?? '—'}</span>,
+    },
     {
       header: 'Payment Terms',
+      width: '130px',
       align: 'right',
-      cell: (row) => `${row.paymentTermsDays} day(s)`,
+      cell: (row) => <span className="fv">{`${row.paymentTermsDays} day(s)`}</span>,
     },
     {
       header: 'Status',
+      width: '120px',
       align: 'center',
       cell: (row) => (
         <Badge tone={row.isActive ? 'green' : 'slate'}>{row.isActive ? 'Active' : 'Inactive'}</Badge>
@@ -92,47 +99,39 @@ export function SuppliersPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            setQuery(search.trim())
-          }}
-        >
-          <div className="relative">
-            <Search
-              size={16}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-            <Input
-              className="w-64 pl-9"
-              placeholder="Search name, phone, PAN…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
+      <FeedList
+        rows={data?.data ?? []}
+        rowKey={(row) => row.id}
+        columns={columns}
+        lead={(row) => initials(row.name)}
+        title={(row) => row.name}
+        subtitle={(row) => row.supplierCode ?? '—'}
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyIcon={<UsersRound size={20} />}
+        emptyTitle="No suppliers found"
+        emptyDescription="Add suppliers to record purchases and payables."
+        toolbar={
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="relative">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
+              />
+              <Input
+                className="w-64 pl-9"
+                placeholder="Search name, phone, PAN…"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
+            <Button icon={<Plus size={16} />} onClick={() => setOpen(true)}>
+              New Supplier
+            </Button>
           </div>
-          <Button type="submit" variant="outline">
-            Search
-          </Button>
-        </form>
-        <Button icon={<Plus size={16} />} onClick={() => setOpen(true)}>
-          New Supplier
-        </Button>
-      </div>
-
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={data?.data ?? []}
-          rowKey={(row) => row.id}
-          loading={loading}
-          error={error}
-          onRetry={reload}
-          emptyTitle="No suppliers found"
-          emptyDescription="Add suppliers to record purchases and payables."
-        />
-      </Card>
+        }
+      />
 
       <Modal
         open={open}
@@ -151,7 +150,7 @@ export function SuppliersPage() {
       >
         <form id="supplier-form" onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {formError && (
-            <div className="sm:col-span-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+            <div className="sm:col-span-2 rounded-lg bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">
               {formError}
             </div>
           )}

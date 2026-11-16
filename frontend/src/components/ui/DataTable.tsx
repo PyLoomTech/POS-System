@@ -42,15 +42,15 @@ export function DataTable<T>({
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-200 text-sm">
-        <thead className="bg-slate-50">
+      <table className="min-w-full border-collapse text-[13px]">
+        <thead>
           <tr>
             {columns.map((column) => (
               <th
                 key={column.header}
                 scope="col"
                 className={cn(
-                  'whitespace-nowrap px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500',
+                  'whitespace-nowrap border-b border-line px-3.5 py-2.5 text-[12.5px] font-medium text-ink-3',
                   ALIGN[column.align ?? 'left'],
                   column.className,
                 )}
@@ -60,14 +60,17 @@ export function DataTable<T>({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody>
           {rows.map((row) => (
-            <tr key={rowKey(row)} className="transition hover:bg-slate-50/70">
+            <tr
+              key={rowKey(row)}
+              className="border-t border-line-2 transition hover:bg-[rgba(43,155,227,.07)]"
+            >
               {columns.map((column) => (
                 <td
                   key={column.header}
                   className={cn(
-                    'px-4 py-2.5 text-slate-700',
+                    'px-3.5 py-3 text-ink-2 align-middle',
                     ALIGN[column.align ?? 'left'],
                     column.className,
                   )}

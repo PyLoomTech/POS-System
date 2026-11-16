@@ -179,6 +179,19 @@ async function main() {
   });
   console.log('Warehouse seeded.');
 
+  await prisma.priceList.upsert({
+    where: { code: 'DEFAULT' },
+    update: { isActive: true },
+    create: {
+      code: 'DEFAULT',
+      name: 'Default Price List',
+      description: 'Default retail price list using item selling prices.',
+      isDefault: true,
+      isActive: true,
+    },
+  });
+  console.log('Default price list seeded.');
+
   // 8. Walk-in customer
   const walkin = await prisma.customer.findFirst({ where: { isWalkin: true } });
   if (!walkin) {

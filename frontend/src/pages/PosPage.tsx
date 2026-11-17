@@ -42,6 +42,7 @@ import type {
 } from '@/types'
 
 interface CartLine {
+  key: string
   itemId: number
   name: string
   itemCode: string
@@ -49,6 +50,7 @@ interface CartLine {
   unitLabel: string
   conversionFactor: number
   baseSellingPrice: number
+  priceListId: number | null
   priceListPrices: Item['priceListPrices']
   units: Array<{ id: number; name: string; abbreviation: string | null; factor: number }>
   unitPrice: number
@@ -116,6 +118,60 @@ function unitChoices(item: Item) {
 function itemUnitFactor(item: Item, unitId: number | null | undefined): number {
   if (!unitId || unitId === item.unit?.id) return 1
   return toNumber(item.unitConversions?.find((conversion) => conversion.unitId === unitId)?.factor)
+}
+
+function resolveItemPrice(item: Item, listId: string | number | null, unitId = item.unit?.id): number {
+  const listPrice = listId
+    ? item.priceListPrices?.find((entry) => Number(entry.priceListId) === Number(listId))
+    : undefined
+  const price = listPrice ? Number(listPrice.price) : toNumber(item.sellingPrice)
+  const priceUnitId = listPrice?.unitId ?? item.unit?.id
+  const priceFactor = itemUnitFactor(item, priceUnitId)
+  const unitFactor = itemUnitFactor(item, unitId)
+  return priceFactor > 0 ? (price / priceFactor) * unitFactor : price * unitFactor
+}
+
+// A saleable variant of an item: one price-list entry (its own unit and price).
+// Items without any price-list entry fall back to a single selling-price variant.
+interface CatalogueEntry {
+  key: string
+  item: Item
+  priceListId: number | null
+  priceListName: string | null
+  unitId: number
+  unitLabel: string
+  price: number
+}
+
+function buildCatalogueEntries(item: Item): CatalogueEntry[] {
+  const priced = item.priceListPrices ?? []
+  const baseUnitId = item.unit?.id ?? 0
+  const baseEntry: CatalogueEntry = {
+    key: `item-${item.id}`,
+    item,
+    priceListId: null,
+    priceListName: null,
+    unitId: baseUnitId,
+    unitLabel: item.unit?.abbreviation || item.unit?.name || '',
+    price: resolveItemPrice(item, null, baseUnitId),
+  }
+  if (priced.length === 0) return [baseEntry]
+  return [
+    baseEntry,
+    ...priced.map((entry) => {
+      const unitId = entry.unitId ?? item.unit?.id ?? 0
+      const unit = unitId === item.unit?.id ? item.unit : entry.unit
+      return {
+        key: `item-${item.id}-list-${entry.priceListId}`,
+        item,
+        priceListId: entry.priceListId,
+        priceListName: entry.priceList?.name ?? null,
+        unitId,
+        unitLabel: unit?.abbreviation || unit?.name || '',
+        price: resolveItemPrice(item, entry.priceListId, unitId),
+      }
+    }),
+  ]
 }
 
 function computeLine(line: CartLine) {
@@ -188,43 +244,18 @@ export function PosPage() {
     }
   }, [priceLists, selectedPriceListId])
 
-  function resolveItemPrice(item: Item, listId: string | number | null, unitId = item.unit?.id): number {
-    const listPrice = listId
-      ? item.priceListPrices?.find((entry) => Number(entry.priceListId) === Number(listId))
-      : undefined
-    const price = listPrice ? Number(listPrice.price) : toNumber(item.sellingPrice)
-    const priceUnitId = listPrice?.unitId ?? item.unit?.id
-    const priceFactor = itemUnitFactor(item, priceUnitId)
-    const unitFactor = itemUnitFactor(item, unitId)
-    return priceFactor > 0 ? (price / priceFactor) * unitFactor : price * unitFactor
-  }
-
-  function resolveLinePrice(line: CartLine, listId: string | number | null): number {
-    const listPrice = listId
-      ? line.priceListPrices?.find((entry) => Number(entry.priceListId) === Number(listId))
-      : undefined
-    const sourceUnitId = listPrice?.unitId ?? line.units[0]?.id
-    const sourceFactor = line.units.find((unit) => unit.id === sourceUnitId)?.factor ?? 1
-    return (listPrice ? Number(listPrice.price) : line.baseSellingPrice) / sourceFactor * line.conversionFactor
-  }
-
-  useEffect(() => {
-    if (!selectedPriceListId) return
-    setLines((prev) => prev.map((line) => {
-      const listPrice = line.priceListPrices?.find(
+  // One catalogue tile per item, filtered to the selected price list.
+  // When an item has no entry for the active list, its base selling-price
+  // variant is shown instead.
+  const entries = useMemo(() => {
+    return catalogue.flatMap((item) => {
+      const itemEntries = buildCatalogueEntries(item)
+      const match = itemEntries.find(
         (entry) => Number(entry.priceListId) === Number(selectedPriceListId),
       )
-      const unitId = listPrice?.unitId ?? line.units[0]?.id ?? line.unitId
-      const selectedUnit = line.units.find((unit) => unit.id === unitId)
-      const updatedLine = {
-        ...line,
-        unitId,
-        unitLabel: selectedUnit?.abbreviation || selectedUnit?.name || line.unitLabel,
-        conversionFactor: selectedUnit?.factor ?? 1,
-      }
-      return { ...updatedLine, unitPrice: resolveLinePrice(updatedLine, selectedPriceListId) }
-    }))
-  }, [selectedPriceListId])
+      return [match ?? itemEntries[0]]
+    })
+  }, [catalogue, selectedPriceListId])
 
   useEffect(() => {
     let cancelled = false
@@ -264,35 +295,34 @@ export function PosPage() {
     }
   }
 
-  function addItem(item: Item) {
+  function addEntry(entry: CatalogueEntry) {
+    const item = entry.item
     const { taxRate, taxRateId } = resolveTax(item, taxRates)
     const units = unitChoices(item)
-    const listPrice = item.priceListPrices?.find(
-      (entry) => Number(entry.priceListId) === Number(selectedPriceListId),
-    )
-    const unitId = listPrice?.unitId ?? item.unit?.id ?? 0
-    const selectedUnit = units.find((unit) => unit.id === unitId)
+    const selectedUnit = units.find((unit) => unit.id === entry.unitId)
     setNotice(null)
     setLines((prev) => {
-      const existing = prev.find((line) => line.itemId === item.id)
+      const existing = prev.find((line) => line.key === entry.key)
       if (existing) {
         return prev.map((line) =>
-          line.itemId === item.id ? { ...line, quantity: line.quantity + 1 } : line,
+          line.key === entry.key ? { ...line, quantity: line.quantity + 1 } : line,
         )
       }
       return [
         ...prev,
         {
+          key: entry.key,
           itemId: item.id,
           name: item.name,
           itemCode: item.itemCode,
-          unitId,
-          unitLabel: selectedUnit?.abbreviation || selectedUnit?.name || '',
+          unitId: entry.unitId,
+          unitLabel: entry.unitLabel,
           conversionFactor: selectedUnit?.factor ?? 1,
           baseSellingPrice: toNumber(item.sellingPrice),
+          priceListId: entry.priceListId,
           priceListPrices: item.priceListPrices,
           units,
-          unitPrice: resolveItemPrice(item, selectedPriceListId, unitId),
+          unitPrice: entry.price,
           quantity: 1,
           discountPct: 0,
           taxType: item.taxType,
@@ -305,12 +335,22 @@ export function PosPage() {
     })
   }
 
-  function patchLine(itemId: number, patch: Partial<CartLine>) {
-    setLines((prev) => prev.map((line) => (line.itemId === itemId ? { ...line, ...patch } : line)))
+  // Scan/barcode has no variant information — fall back to the entry matching
+  // the active price list (or the first variant when there is no match).
+  function addItemByScan(item: Item) {
+    const itemEntries = buildCatalogueEntries(item)
+    const match =
+      itemEntries.find((entry) => Number(entry.priceListId) === Number(selectedPriceListId)) ??
+      itemEntries[0]
+    if (match) addEntry(match)
   }
 
-  function removeLine(itemId: number) {
-    setLines((prev) => prev.filter((line) => line.itemId !== itemId))
+  function patchLine(key: string, patch: Partial<CartLine>) {
+    setLines((prev) => prev.map((line) => (line.key === key ? { ...line, ...patch } : line)))
+  }
+
+  function removeLine(key: string) {
+    setLines((prev) => prev.filter((line) => line.key !== key))
   }
 
   async function onScan(event: FormEvent<HTMLFormElement>) {
@@ -319,11 +359,11 @@ export function PosPage() {
     if (!code) return
     try {
       const { data } = await api.get<Item>(`/items/barcode/${encodeURIComponent(code)}`)
-      addItem(data)
+      addItemByScan(data)
       setScanValue('')
     } catch {
       if (catalogue.length === 1) {
-        addItem(catalogue[0])
+        addItemByScan(catalogue[0])
         setScanValue('')
       } else {
         setNotice(`No item matched barcode “${code}”.`)
@@ -532,20 +572,14 @@ export function PosPage() {
           </Card>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-4">
-            {catalogue.map((item) => {
+            {entries.map((entry) => {
+              const item = entry.item
               const stock = stockOf(item)
-              const units = unitChoices(item)
-              const listPrice = item.priceListPrices?.find(
-                (entry) => Number(entry.priceListId) === Number(selectedPriceListId),
-              )
-              const unitId = listPrice?.unitId ?? item.unit?.id
-              const unit = units.find((option) => option.id === unitId)
-              const price = resolveItemPrice(item, selectedPriceListId, unitId)
               return (
                 <button
-                  key={item.id}
+                  key={entry.key}
                   type="button"
-                  onClick={() => addItem(item)}
+                  onClick={() => addEntry(entry)}
                   className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
                 >
                   <div className="flex h-28 items-center justify-center bg-line-2">
@@ -560,11 +594,15 @@ export function PosPage() {
                     )}
                   </div>
                   <div className="flex flex-1 flex-col gap-1 p-3">
-                    <p className="line-clamp-2 text-sm font-medium text-ink">{item.name}</p>
+                    <p className="line-clamp-2 text-sm font-medium text-ink">
+                      {item.name}
+                      {entry.priceListName ? ` (${entry.priceListName})` : ''}
+                    </p>
                     <p className="font-mono text-[11px] text-ink-3">{item.itemCode}</p>
                     <div className="mt-auto flex items-center justify-between pt-1">
                       <span className="text-sm font-semibold text-accent">
-                        {formatCurrency(price)}{unit?.abbreviation ? ` / ${unit.abbreviation}` : ''}
+                        {formatCurrency(entry.price)}
+                        {entry.unitLabel ? ` / ${entry.unitLabel}` : ''}
                       </span>
                       <Badge tone={stock > 0 ? 'green' : 'red'}>
                         {stock > 0 ? formatNumber(stock, 0) : '0'}
@@ -634,11 +672,17 @@ export function PosPage() {
                 const calc = computeLine(line)
                 const item = catalogue.find((entry) => entry.id === line.itemId)
                 const units = item ? unitChoices(item) : []
+                const listName = line.priceListId != null
+                  ? priceLists?.find((list) => list.id === line.priceListId)?.name
+                  : null
                 return (
-                  <li key={line.itemId} className="rounded-2xl border border-line p-3">
+                  <li key={line.key} className="rounded-2xl border border-line p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-ink">{line.name}</p>
+                        <p className="truncate text-sm font-medium text-ink">
+                          {line.name}
+                          {listName ? ` (${listName})` : ''}
+                        </p>
                         <p className="text-[11px] text-ink-3">
                           {formatCurrency(line.unitPrice)} / {line.unitLabel} · stock {formatNumber(line.stock, 0)} {item?.unit?.abbreviation || item?.unit?.name}
                         </p>
@@ -650,11 +694,11 @@ export function PosPage() {
                             onChange={(event) => {
                               const selected = units.find((unit) => unit.id === Number(event.target.value))
                               if (!selected) return
-                              patchLine(line.itemId, {
+                              patchLine(line.key, {
                                 unitId: selected.id,
                                 unitLabel: selected.abbreviation || selected.name,
                                 conversionFactor: selected.factor,
-                                unitPrice: resolveItemPrice(item, selectedPriceListId, selected.id),
+                                unitPrice: resolveItemPrice(item, line.priceListId, selected.id),
                               })
                             }}
                           >
@@ -668,7 +712,7 @@ export function PosPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => removeLine(line.itemId)}
+                        onClick={() => removeLine(line.key)}
                         className="rounded-lg p-1 text-ink-3 hover:bg-[#f9e4e7] hover:text-brand-crimson"
                         aria-label={`Remove ${line.name}`}
                       >
@@ -682,8 +726,8 @@ export function PosPage() {
                           type="button"
                           onClick={() =>
                             line.quantity > 1
-                              ? patchLine(line.itemId, { quantity: line.quantity - 1 })
-                              : removeLine(line.itemId)
+                              ? patchLine(line.key, { quantity: line.quantity - 1 })
+                              : removeLine(line.key)
                           }
                           className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-ink-2 hover:bg-line-2"
                           aria-label="Decrease quantity"
@@ -696,7 +740,7 @@ export function PosPage() {
                           step="0.01"
                           value={line.quantity}
                           onChange={(event) =>
-                            patchLine(line.itemId, {
+                            patchLine(line.key, {
                               quantity: Math.max(toNumber(event.target.value), 0.01),
                             })
                           }
@@ -704,7 +748,7 @@ export function PosPage() {
                         />
                         <button
                           type="button"
-                          onClick={() => patchLine(line.itemId, { quantity: line.quantity + 1 })}
+                          onClick={() => patchLine(line.key, { quantity: line.quantity + 1 })}
                           className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-ink-2 hover:bg-line-2"
                           aria-label="Increase quantity"
                         >
@@ -719,7 +763,7 @@ export function PosPage() {
                           step="0.01"
                           value={line.discountPct}
                           onChange={(event) =>
-                            patchLine(line.itemId, {
+                            patchLine(line.key, {
                               discountPct: Math.min(toNumber(event.target.value), 100),
                             })
                           }

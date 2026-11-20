@@ -28,7 +28,7 @@ import { api, getErrorMessage } from '@/lib/api'
 import {
   buildPaymentQrPayload,
   cn,
-  formatCurrency,
+  formatCurrency as formatCurrencyBase,
   formatDate,
   formatNumber,
   getPriceListDisplayName,
@@ -233,6 +233,7 @@ export function PosPage() {
     '/customers?limit=100',
   )
   const { data: company } = useFetch<CompanySettings>('/settings/company')
+  const formatCurrency = (value: unknown) => formatCurrencyBase(value, company)
   const { data: currentShift, reload: reloadCurrentShift } = useFetch<CashierShift>('/shifts/current')
 
   const [customerOpen, setCustomerOpen] = useState(false)
@@ -461,7 +462,7 @@ export function PosPage() {
   const qrPayload = buildPaymentQrPayload({
     amount: totals.grandTotal,
     reference: qrReference,
-    merchantName: company?.companyName,
+    merchantName: company?.tradingName || company?.companyName,
     currency: company?.currencyCode,
   })
 
@@ -1049,7 +1050,7 @@ export function PosPage() {
             {formatCurrency(totals.grandTotal)}
           </p>
           <p className="mt-1 text-sm text-ink-2">
-            {company?.companyName ?? 'Pyloom POS'} · Fonepay / QR
+            {company?.tradingName || company?.companyName || 'Pyloom POS'} · Fonepay / QR
           </p>
           <p className="mt-0.5 text-[11px] text-ink-3">{qrReference}</p>
           <p className="mt-4 text-xs text-ink-3">
@@ -1108,15 +1109,26 @@ export function PosPage() {
           </div>
           <div id="pos-receipt" className="text-ink">
             <div className="border-b border-dashed border-line pb-3 text-center">
+              {(company?.invoiceLogo || company?.companyLogo) && (
+                <img
+                  src={company.invoiceLogo || company.companyLogo || undefined}
+                  alt={`${company.tradingName || company.companyName || 'Company'} logo`}
+                  className="mx-auto mb-2 max-h-12 max-w-full object-contain"
+                />
+              )}
               <p className="text-base font-semibold">
-                {company?.companyName ?? 'Pyloom POS'}
+                {company?.tradingName || company?.companyName || 'Pyloom POS'}
               </p>
               {company?.addressLine1 && (
                 <p className="text-xs text-ink-2">{company.addressLine1}</p>
               )}
               <p className="text-xs text-ink-2">
-                {[company?.city, company?.phone].filter(Boolean).join(' · ')}
+                {[
+                  [company?.city, company?.stateProvince, company?.country].filter(Boolean).join(', '),
+                  company?.phone,
+                ].filter(Boolean).join(' · ')}
               </p>
+              {company?.email && <p className="text-xs text-ink-2">{company.email}</p>}
               {company?.panVatNumber && (
                 <p className="text-xs text-ink-2">PAN/VAT: {company.panVatNumber}</p>
               )}
@@ -1201,7 +1213,7 @@ export function PosPage() {
                   value={buildPaymentQrPayload({
                     amount: toNumber(receipt.grandTotal),
                     reference: receipt.invoiceNumber,
-                    merchantName: company?.companyName,
+                    merchantName: company?.tradingName || company?.companyName,
                     currency: company?.currencyCode,
                   })}
                   size={132}

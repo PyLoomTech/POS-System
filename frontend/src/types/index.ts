@@ -154,14 +154,50 @@ export interface WalkinCustomer {
 
 export interface CompanySettings {
   companyName: string
+  legalBusinessName?: string | null
+  tradingName?: string | null
   companyLogo: string | null
+  alternativeLogo?: string | null
+  invoiceLogo?: string | null
+  companyStamp?: string | null
+  signatureImage?: string | null
+  registrationNumber?: string | null
+  businessType?: string | null
+  industry?: string | null
+  description?: string | null
+  primaryContactPerson?: string | null
   addressLine1: string | null
   addressLine2: string | null
+  billingAddress?: string | null
   city: string | null
+  stateProvince?: string | null
+  country?: string | null
+  postalCode?: string | null
   phone: string | null
+  alternativePhone?: string | null
   email: string | null
+  website?: string | null
   panVatNumber: string | null
   currencyCode: string
+  currencySymbol?: string
+  currencyPrecision?: number
+  timezone?: string
+  language?: string
+  dateFormat?: string
+  numberFormat?: string
+  calendarSystem?: 'AD' | 'BS'
+  fiscalYearStart?: string
+  fiscalYearEnd?: string | null
+  defaultPaymentTermsDays?: number
+  defaultTaxRateId?: number | null
+  defaultReceivableAccountId?: number | null
+  defaultPayableAccountId?: number | null
+  defaultCashAccountId?: number | null
+  defaultBankAccountId?: number | null
+  defaultIncomeAccountId?: number | null
+  defaultExpenseAccountId?: number | null
+  defaultStockAccountId?: number | null
+  defaultCogsAccountId?: number | null
   invoiceFooter: string | null
 }
 

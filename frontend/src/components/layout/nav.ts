@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Boxes,
+  Building2,
   Calculator,
   Clock3,
   FolderTree,
@@ -81,6 +82,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Admin',
     items: [
       { label: 'Users', path: '/users', icon: UserCog, permission: 'users:view' },
+      { label: 'Company Management', path: '/company', icon: Building2, permission: 'settings:view' },
       { label: 'Settings', path: '/settings', icon: Settings, permission: 'settings:view' },
     ],
   },

@@ -1,3 +1,10 @@
+import {
+  formatBsDate,
+  formatConfiguredDate,
+  getDatePreferences,
+  parseDateForDisplay,
+} from './datePreferences'
+
 export function cn(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ')
 }
@@ -8,11 +15,18 @@ export function toNumber(value: unknown): number {
   return Number.isFinite(num) ? num : 0
 }
 
-export function formatCurrency(value: unknown): string {
+export interface CurrencyFormatSettings {
+  currencySymbol?: string | null
+  currencyPrecision?: number | null
+  numberFormat?: string | null
+}
+
+export function formatCurrency(value: unknown, settings?: CurrencyFormatSettings | null): string {
   const num = toNumber(value)
-  return `Rs. ${num.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  const precision = settings?.currencyPrecision ?? 2
+  return `${settings?.currencySymbol || 'Rs.'} ${num.toLocaleString(settings?.numberFormat || 'en-US', {
+    minimumFractionDigits: precision,
+    maximumFractionDigits: precision,
   })}`
 }
 
@@ -40,22 +54,27 @@ export function getPriceListDisplayName(
 
 export function formatDate(value?: string | Date | null): string {
   if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  const date = parseDateForDisplay(value)
+  if (!date) return '—'
+  const preferences = getDatePreferences()
+  return preferences.calendarSystem === 'BS'
+    ? formatBsDate(date, preferences.language)
+    : formatConfiguredDate(date)
 }
 
 export function formatDateTime(value?: string | Date | null): string {
   if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
+  const date = parseDateForDisplay(value)
+  if (!date) return '—'
+  const preferences = getDatePreferences()
+  const formattedDate = preferences.calendarSystem === 'BS'
+    ? formatBsDate(date, preferences.language)
+    : formatConfiguredDate(date)
+  const formattedTime = date.toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
   })
+  return `${formattedDate} ${formattedTime}`
 }
 
 export function imageSrc(value?: string | null): string {

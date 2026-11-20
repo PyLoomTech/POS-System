@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
@@ -19,10 +20,45 @@ import { PurchasesPage } from '@/pages/PurchasesPage'
 import { AccountingPage } from '@/pages/AccountingPage'
 import { ReportsPage } from '@/pages/ReportsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { CompanyManagementPage } from '@/pages/CompanyManagementPage'
 import { ShiftsPage } from '@/pages/ShiftsPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
+import { useAuth } from '@/context/AuthContext'
+import { api } from '@/lib/api'
+import { setDatePreferences, subscribeDatePreferences } from '@/lib/datePreferences'
+import type { CompanySettings } from '@/types'
 
 function App() {
+  const { user } = useAuth()
+  const [, refreshDatePreferences] = useState(0)
+
+  useEffect(() => subscribeDatePreferences(() => refreshDatePreferences((value) => value + 1)), [])
+
+  useEffect(() => {
+    if (!user) {
+      setDatePreferences({ calendarSystem: 'AD', dateFormat: 'dd/MM/yyyy', language: 'en' })
+      return
+    }
+
+    let active = true
+    void api.get<Partial<CompanySettings>>('/settings/company')
+      .then(({ data }) => {
+        if (!active) return
+        setDatePreferences({
+          calendarSystem: data.calendarSystem === 'BS' ? 'BS' : 'AD',
+          dateFormat: data.dateFormat || 'dd/MM/yyyy',
+          language: data.language || 'en',
+        })
+      })
+      .catch((error: unknown) => {
+        if (active) console.error('Could not load company date preferences.', error)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [user])
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -47,6 +83,7 @@ function App() {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="company" element={<CompanyManagementPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>

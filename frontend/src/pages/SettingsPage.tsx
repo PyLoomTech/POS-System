@@ -1,278 +1,12 @@
 import { useEffect, useState } from 'react'
-import type { FormEvent, ReactNode } from 'react'
-import { Building2, Check, Plus, Save, SlidersHorizontal, Trash2 } from 'lucide-react'
+import type { FormEvent } from 'react'
+import { Check, Plus, Save, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardHeader } from '@/components/ui/Card'
-import { Field, Input, Textarea } from '@/components/ui/Input'
+import { Field, Input } from '@/components/ui/Input'
 import { Spinner, ErrorState, EmptyState } from '@/components/ui/Feedback'
 import { useFetch } from '@/hooks/useFetch'
 import { api, getErrorMessage } from '@/lib/api'
-import { cn } from '@/lib/utils'
-import type { CompanySettings } from '@/types'
-
-type SettingsTab = 'company' | 'application'
-
-const TABS: { key: SettingsTab; label: string; icon: ReactNode }[] = [
-  { key: 'company', label: 'Company Profile', icon: <Building2 size={15} /> },
-  { key: 'application', label: 'Application Settings', icon: <SlidersHorizontal size={15} /> },
-]
-
-// ---------------------------------------------------------------
-// Company Profile
-// ---------------------------------------------------------------
-
-interface CompanyForm {
-  companyName: string
-  companyLogo: string
-  addressLine1: string
-  addressLine2: string
-  city: string
-  phone: string
-  email: string
-  panVatNumber: string
-  currencyCode: string
-  invoiceFooter: string
-}
-
-const EMPTY_COMPANY: CompanyForm = {
-  companyName: '',
-  companyLogo: '',
-  addressLine1: '',
-  addressLine2: '',
-  city: '',
-  phone: '',
-  email: '',
-  panVatNumber: '',
-  currencyCode: 'NPR',
-  invoiceFooter: '',
-}
-
-function CompanyProfileTab() {
-  const { data, loading, error, reload } = useFetch<CompanySettings>('/settings/company')
-
-  const [form, setForm] = useState<CompanyForm>(EMPTY_COMPANY)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [formError, setFormError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!data) return
-    setForm({
-      companyName: data.companyName ?? '',
-      companyLogo: data.companyLogo ?? '',
-      addressLine1: data.addressLine1 ?? '',
-      addressLine2: data.addressLine2 ?? '',
-      city: data.city ?? '',
-      phone: data.phone ?? '',
-      email: data.email ?? '',
-      panVatNumber: data.panVatNumber ?? '',
-      currencyCode: data.currencyCode ?? 'NPR',
-      invoiceFooter: data.invoiceFooter ?? '',
-    })
-  }, [data])
-
-  function update<K extends keyof CompanyForm>(key: K, value: string) {
-    setForm((prev) => ({ ...prev, [key]: value }))
-    setSaved(false)
-  }
-
-  function validate(): boolean {
-    const next: Record<string, string> = {}
-    if (!form.companyName.trim()) next.companyName = 'Company name is required.'
-    if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) {
-      next.email = 'Enter a valid email address.'
-    }
-    if (!form.currencyCode.trim()) next.currencyCode = 'Currency code is required.'
-    setErrors(next)
-    return Object.keys(next).length === 0
-  }
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setFormError(null)
-    if (!validate()) return
-
-    setSaving(true)
-    try {
-      await api.put('/settings/company', {
-        companyName: form.companyName.trim(),
-        companyLogo: form.companyLogo.trim() || null,
-        addressLine1: form.addressLine1.trim() || null,
-        addressLine2: form.addressLine2.trim() || null,
-        city: form.city.trim() || null,
-        phone: form.phone.trim() || null,
-        email: form.email.trim() || null,
-        panVatNumber: form.panVatNumber.trim() || null,
-        currencyCode: form.currencyCode.trim() || 'NPR',
-        invoiceFooter: form.invoiceFooter.trim() || null,
-      })
-      setSaved(true)
-      reload()
-    } catch (err) {
-      setFormError(getErrorMessage(err))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (loading) return <Spinner />
-  if (error) return <ErrorState message={error} onRetry={reload} />
-
-  return (
-    <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
-      <Card>
-        <CardHeader
-          title="Company Profile"
-          subtitle="Shown on invoices, receipts and reports"
-          action={
-            saved ? (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-green">
-                <Check size={14} /> Saved
-              </span>
-            ) : undefined
-          }
-        />
-        <div className="space-y-4 p-5">
-          {formError && (
-            <div className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson">{formError}</div>
-          )}
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Company Name" required error={errors.companyName} className="sm:col-span-2">
-              <Input
-                value={form.companyName}
-                onChange={(e) => update('companyName', e.target.value)}
-                required
-              />
-            </Field>
-            <Field
-              label="Logo URL"
-              hint="Absolute URL or path to the company logo"
-              className="sm:col-span-2"
-            >
-              <Input
-                value={form.companyLogo}
-                onChange={(e) => update('companyLogo', e.target.value)}
-                placeholder="https://…/logo.png"
-              />
-            </Field>
-            <Field label="Address Line 1">
-              <Input
-                value={form.addressLine1}
-                onChange={(e) => update('addressLine1', e.target.value)}
-              />
-            </Field>
-            <Field label="Address Line 2">
-              <Input
-                value={form.addressLine2}
-                onChange={(e) => update('addressLine2', e.target.value)}
-              />
-            </Field>
-            <Field label="City">
-              <Input value={form.city} onChange={(e) => update('city', e.target.value)} />
-            </Field>
-            <Field label="Phone">
-              <Input value={form.phone} onChange={(e) => update('phone', e.target.value)} />
-            </Field>
-            <Field label="Email" error={errors.email}>
-              <Input
-                type="email"
-                value={form.email}
-                onChange={(e) => update('email', e.target.value)}
-                placeholder="hello@company.com"
-              />
-            </Field>
-            <Field label="PAN / VAT Number">
-              <Input
-                value={form.panVatNumber}
-                onChange={(e) => update('panVatNumber', e.target.value)}
-              />
-            </Field>
-            <Field label="Currency Code" required error={errors.currencyCode}>
-              <Input
-                value={form.currencyCode}
-                onChange={(e) => update('currencyCode', e.target.value)}
-                placeholder="NPR"
-              />
-            </Field>
-            <Field label="Invoice Footer" className="sm:col-span-2">
-              <Textarea
-                rows={2}
-                value={form.invoiceFooter}
-                onChange={(e) => update('invoiceFooter', e.target.value)}
-                placeholder="Thank you for your business!"
-              />
-            </Field>
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-1">
-            <Button type="submit" loading={saving} icon={<Save size={16} />}>
-              Save Company Profile
-            </Button>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="h-fit lg:sticky lg:top-4">
-        <CardHeader title="Receipt Preview" subtitle="How your header and footer will print" />
-        <div className="p-5">
-          <div className="text-ink">
-            <div className="border-b border-dashed border-line pb-3 text-center">
-              {form.companyLogo && (
-                <img
-                  src={form.companyLogo}
-                  alt="Company logo"
-                  className="mx-auto mb-2 h-12 w-auto object-contain"
-                />
-              )}
-              <p className="text-base font-semibold">{form.companyName || 'Pyloom POS'}</p>
-              {form.addressLine1 && (
-                <p className="text-xs text-ink-3">{form.addressLine1}</p>
-              )}
-              {form.addressLine2 && (
-                <p className="text-xs text-ink-3">{form.addressLine2}</p>
-              )}
-              <p className="text-xs text-ink-3">
-                {[form.city, form.phone].filter(Boolean).join(' · ') || 'City · Phone'}
-              </p>
-              {form.panVatNumber && (
-                <p className="text-xs text-ink-3">PAN/VAT: {form.panVatNumber}</p>
-              )}
-            </div>
-
-            <div className="flex justify-between py-2 text-xs text-ink-3">
-              <span>Invoice: INV-000001</span>
-              <span>—</span>
-            </div>
-            <p className="pb-2 text-xs text-ink-3">Customer: Walk-in Customer</p>
-
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-y border-line text-ink-3">
-                  <th className="py-1.5 text-left font-medium">Item</th>
-                  <th className="py-1.5 text-right font-medium">Qty</th>
-                  <th className="py-1.5 text-right font-medium">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-line-2">
-                  <td className="py-1.5">Sample item</td>
-                  <td className="py-1.5 text-right">1</td>
-                  <td className="py-1.5 text-right">Rs. 100.00</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <p className={cn('mt-4 text-center text-[11px] text-ink-3')}>
-              {form.invoiceFooter || 'Thank you for your business!'}
-            </p>
-          </div>
-        </div>
-      </Card>
-    </form>
-  )
-}
 
 // ---------------------------------------------------------------
 // Application Settings
@@ -464,31 +198,179 @@ function ApplicationSettingsTab() {
 // Page
 // ---------------------------------------------------------------
 
-export function SettingsPage() {
-  const [tab, setTab] = useState<SettingsTab>('company')
+function PrintFormatTab() {
+  const { data, loading, error, reload } = useFetch<PrintTemplate[]>('/settings/print-templates')
+  const [name, setName] = useState('')
+  const [documentType, setDocumentType] = useState('sales_invoice')
+  const [pageSize, setPageSize] = useState('A4')
+  const [orientation, setOrientation] = useState('portrait')
+  const [isDefault, setIsDefault] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  async function createTemplate() {
+    if (!name.trim()) {
+      setFormError('Template name is required.')
+      return
+    }
+    setSaving(true)
+    setFormError(null)
+    try {
+      await api.post('/settings/print-templates', {
+        name: name.trim(),
+        documentType,
+        pageSize,
+        orientation,
+        isDefault,
+        isActive: true,
+        configuration: {
+          elements: ['company_header', 'document_info', 'item_table', 'financial_summary', 'footer'],
+          itemColumns: ['itemName', 'quantity', 'unitPrice', 'taxAmount', 'lineTotal'],
+        },
+      })
+      setName('')
+      setIsDefault(false)
+      reload()
+    } catch (err) {
+      setFormError(getErrorMessage(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function publishTemplate(id: number) {
+    setFormError(null)
+    try {
+      await api.post(`/settings/print-templates/${id}/publish`, {})
+      reload()
+    } catch (err) {
+      setFormError(getErrorMessage(err))
+    }
+  }
+
+  async function deleteTemplate(id: number) {
+    setFormError(null)
+    try {
+      await api.delete(`/settings/print-templates/${id}`)
+      reload()
+    } catch (err) {
+      setFormError(getErrorMessage(err))
+    }
+  }
+
+  if (loading) return <Spinner />
+  if (error) return <ErrorState message={error} onRetry={reload} />
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {TABS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => setTab(item.key)}
-            className={cn(
-              'inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors',
-              tab === item.key
-                ? 'border-accent bg-accent text-white shadow-sm'
-                : 'border-line bg-white text-ink-2 hover:bg-line-2',
-            )}
-          >
-            {item.icon}
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <Card>
+        <CardHeader title="Create Print Format" subtitle="Add a reusable published layout for a document type" />
+        <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 xl:grid-cols-5">
+          {formError && (
+            <div role="alert" className="rounded-xl bg-[#f9e4e7] px-3 py-2 text-xs text-brand-crimson xl:col-span-5">
+              {formError}
+            </div>
+          )}
+          <Field label="Template Name" required>
+            <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="A4 Tax Invoice" />
+          </Field>
+          <Field label="Document Type">
+            <select className="h-9 w-full rounded-xl border border-line bg-surface px-3 text-sm" value={documentType} onChange={(event) => setDocumentType(event.target.value)}>
+              {DOCUMENT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Page Size">
+            <select className="h-9 w-full rounded-xl border border-line bg-surface px-3 text-sm" value={pageSize} onChange={(event) => setPageSize(event.target.value)}>
+              {['A4', 'A5', 'LETTER', 'THERMAL_80', 'THERMAL_58', 'CUSTOM'].map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </Field>
+          <Field label="Orientation">
+            <select className="h-9 w-full rounded-xl border border-line bg-surface px-3 text-sm" value={orientation} onChange={(event) => setOrientation(event.target.value)}>
+              <option value="portrait">Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select>
+          </Field>
+          <div className="flex items-end gap-3 pb-1">
+            <label className="flex h-9 items-center gap-2 text-sm text-ink-2">
+              <input type="checkbox" checked={isDefault} onChange={(event) => setIsDefault(event.target.checked)} />
+              Default
+            </label>
+            <Button loading={saving} icon={<Plus size={14} />} onClick={createTemplate}>Create</Button>
+          </div>
+        </div>
+      </Card>
 
-      {tab === 'company' ? <CompanyProfileTab /> : <ApplicationSettingsTab />}
+      <Card>
+        <CardHeader title="Print Format Templates" subtitle="Templates are stored and published per document type" />
+        <div className="p-5">
+          {!data?.length ? (
+            <EmptyState title="No print formats" description="Create the first template for a supported document type." />
+          ) : (
+            <div className="space-y-3">
+              {data.map((template) => (
+                <div key={template.id} className="grid grid-cols-1 gap-3 rounded-2xl border border-line p-3 md:grid-cols-[1fr_180px_120px_100px_auto] md:items-center">
+                  <div>
+                    <p className="font-medium text-ink">{template.name}</p>
+                    <p className="text-xs text-ink-3">{DOCUMENT_TYPES.find((item) => item.value === template.documentType)?.label ?? template.documentType}</p>
+                  </div>
+                  <span className="text-sm text-ink-2">{template.pageSize} · {template.orientation}</span>
+                  <span className="text-xs font-medium text-ink-2">{template.status}</span>
+                  <span className="text-xs text-ink-2">{template.isDefault ? 'Default' : 'Not default'}</span>
+                  <div className="flex justify-end gap-2">
+                    {template.status !== 'published' && (
+                      <Button size="sm" variant="outline" onClick={() => void publishTemplate(template.id)}>Publish</Button>
+                    )}
+                    <Button size="sm" variant="ghost" className="text-brand-crimson" onClick={() => void deleteTemplate(template.id)}>Delete</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+interface PrintTemplate {
+  id: number
+  documentType: string
+  name: string
+  pageSize: string
+  orientation: string
+  status: string
+  isDefault: boolean
+  isActive: boolean
+}
+
+const DOCUMENT_TYPES = [
+  { value: 'sales_invoice', label: 'Sales Invoice' },
+  { value: 'pos_receipt', label: 'POS Receipt' },
+  { value: 'sales_order', label: 'Sales Order' },
+  { value: 'quotation', label: 'Quotation' },
+  { value: 'sales_return', label: 'Sales Return / Credit Note' },
+  { value: 'delivery_note', label: 'Delivery Note' },
+  { value: 'purchase_order', label: 'Purchase Order' },
+  { value: 'purchase_receipt', label: 'Purchase Receipt' },
+  { value: 'purchase_invoice', label: 'Purchase Invoice' },
+  { value: 'purchase_return', label: 'Purchase Return / Debit Note' },
+  { value: 'payment_receipt', label: 'Payment Receipt' },
+  { value: 'customer_payment_voucher', label: 'Customer Payment Voucher' },
+  { value: 'supplier_payment_voucher', label: 'Supplier Payment Voucher' },
+  { value: 'journal_entry', label: 'Journal Entry Voucher' },
+  { value: 'shift_opening', label: 'Shift Opening Summary' },
+  { value: 'shift_closing', label: 'Shift Closing Report' },
+] as const
+
+export function SettingsPage() {
+  const [tab, setTab] = useState<'application' | 'printing'>('application')
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <Button type="button" variant={tab === 'application' ? 'primary' : 'outline'} size="sm" onClick={() => setTab('application')}>Application Settings</Button>
+        <Button type="button" variant={tab === 'printing' ? 'primary' : 'outline'} size="sm" onClick={() => setTab('printing')}>Print Formats</Button>
+      </div>
+      {tab === 'application' ? <ApplicationSettingsTab /> : <PrintFormatTab />}
     </div>
   )
 }

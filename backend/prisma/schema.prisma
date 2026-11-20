@@ -181,24 +181,107 @@ model AuditLog {
 // ============================================================
 
 model CompanySettings {
-  id             Int      @id @default(autoincrement())
-  companyName    String   @map("company_name") @db.VarChar(255)
-  companyLogo    String?  @map("company_logo") @db.VarChar(500)
-  addressLine1   String?  @map("address_line1") @db.VarChar(500)
-  addressLine2   String?  @map("address_line2") @db.VarChar(500)
-  city           String?  @db.VarChar(100)
-  phone          String?  @db.VarChar(50)
-  email          String?  @db.VarChar(255)
-  website        String?  @db.VarChar(255)
-  panVatNumber   String?  @map("pan_vat_number") @db.VarChar(50)
-  currencyCode   String   @default("NPR") @map("currency_code") @db.VarChar(10)
-  timezone       String   @default("Asia/Kathmandu") @db.VarChar(100)
-  fiscalYearStart String  @default("07-16") @map("fiscal_year_start") @db.VarChar(10)
-  invoiceFooter  String?  @map("invoice_footer")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id                         Int      @id @default(autoincrement())
+  companyName                String   @map("company_name") @db.VarChar(255)
+  legalBusinessName          String?  @map("legal_business_name") @db.VarChar(255)
+  tradingName                String?  @map("trading_name") @db.VarChar(255)
+  companyLogo                String?  @map("company_logo") @db.VarChar(500)
+  alternativeLogo            String?  @map("alternative_logo") @db.VarChar(500)
+  invoiceLogo                String?  @map("invoice_logo") @db.VarChar(500)
+  companyStamp               String?  @map("company_stamp") @db.VarChar(500)
+  signatureImage             String?  @map("signature_image") @db.VarChar(500)
+  registrationNumber         String?  @map("registration_number") @db.VarChar(100)
+  businessType               String?  @map("business_type") @db.VarChar(100)
+  industry                   String?  @db.VarChar(100)
+  description                String?
+  primaryContactPerson       String?  @map("primary_contact_person") @db.VarChar(255)
+  addressLine1               String?  @map("address_line1") @db.VarChar(500)
+  addressLine2               String?  @map("address_line2") @db.VarChar(500)
+  billingAddress             String?  @map("billing_address") @db.VarChar(1000)
+  city                       String?  @db.VarChar(100)
+  stateProvince              String?  @map("state_province") @db.VarChar(100)
+  country                    String?  @db.VarChar(100)
+  postalCode                 String?  @map("postal_code") @db.VarChar(30)
+  phone                      String?  @db.VarChar(50)
+  alternativePhone           String?  @map("alternative_phone") @db.VarChar(50)
+  email                      String?  @db.VarChar(255)
+  website                    String?  @db.VarChar(255)
+  panVatNumber               String?  @map("pan_vat_number") @db.VarChar(50)
+  currencyCode               String   @default("NPR") @map("currency_code") @db.VarChar(10)
+  currencySymbol             String   @default("Rs.") @map("currency_symbol") @db.VarChar(10)
+  currencyPrecision          Int      @default(2) @map("currency_precision")
+  timezone                   String   @default("Asia/Kathmandu") @db.VarChar(100)
+  language                   String   @default("en") @db.VarChar(20)
+  dateFormat                 String   @default("dd/MM/yyyy") @map("date_format") @db.VarChar(40)
+  numberFormat               String   @default("en-US") @map("number_format") @db.VarChar(40)
+  calendarSystem             String   @default("AD") @map("calendar_system") @db.VarChar(2)
+  fiscalYearStart            String   @default("07-16") @map("fiscal_year_start") @db.VarChar(10)
+  fiscalYearEnd              String?  @map("fiscal_year_end") @db.VarChar(10)
+  defaultPaymentTermsDays    Int      @default(0) @map("default_payment_terms_days")
+  defaultTaxRateId           Int?     @map("default_tax_rate_id")
+  defaultReceivableAccountId Int?     @map("default_receivable_account_id")
+  defaultPayableAccountId    Int?     @map("default_payable_account_id")
+  defaultCashAccountId       Int?     @map("default_cash_account_id")
+  defaultBankAccountId       Int?     @map("default_bank_account_id")
+  defaultIncomeAccountId     Int?     @map("default_income_account_id")
+  defaultExpenseAccountId    Int?     @map("default_expense_account_id")
+  defaultStockAccountId      Int?     @map("default_stock_account_id")
+  defaultCogsAccountId       Int?     @map("default_cogs_account_id")
+  invoiceFooter              String?  @map("invoice_footer")
+  createdAt                  DateTime @default(now()) @map("created_at")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
+
+  defaultTaxRate           TaxRate? @relation("CompanyDefaultTax", fields: [defaultTaxRateId], references: [id], onDelete: SetNull)
+  defaultReceivableAccount Account? @relation("CompanyReceivableAccount", fields: [defaultReceivableAccountId], references: [id], onDelete: SetNull)
+  defaultPayableAccount    Account? @relation("CompanyPayableAccount", fields: [defaultPayableAccountId], references: [id], onDelete: SetNull)
+  defaultCashAccount       Account? @relation("CompanyCashAccount", fields: [defaultCashAccountId], references: [id], onDelete: SetNull)
+  defaultBankAccount       Account? @relation("CompanyBankAccount", fields: [defaultBankAccountId], references: [id], onDelete: SetNull)
+  defaultIncomeAccount     Account? @relation("CompanyIncomeAccount", fields: [defaultIncomeAccountId], references: [id], onDelete: SetNull)
+  defaultExpenseAccount    Account? @relation("CompanyExpenseAccount", fields: [defaultExpenseAccountId], references: [id], onDelete: SetNull)
+  defaultStockAccount      Account? @relation("CompanyStockAccount", fields: [defaultStockAccountId], references: [id], onDelete: SetNull)
+  defaultCogsAccount       Account? @relation("CompanyCogsAccount", fields: [defaultCogsAccountId], references: [id], onDelete: SetNull)
+  printTemplates           PrintTemplate[]
 
   @@map("company_settings")
+}
+
+model PrintTemplate {
+  id           Int      @id @default(autoincrement())
+  companyId    Int      @map("company_id")
+  branchId     Int?     @map("branch_id")
+  documentType String   @map("document_type") @db.VarChar(50)
+  name         String   @db.VarChar(255)
+  pageSize     String   @default("A4") @map("page_size") @db.VarChar(30)
+  orientation  String   @default("portrait") @db.VarChar(20)
+  status       String   @default("draft") @db.VarChar(20)
+  isDefault    Boolean  @default(false) @map("is_default")
+  isActive     Boolean  @default(true) @map("is_active")
+  configuration Json    @default("{}")
+  createdBy    Int?     @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  company  CompanySettings @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  versions PrintTemplateVersion[]
+
+  @@unique([companyId, branchId, documentType, name])
+  @@index([companyId, documentType, isDefault, isActive])
+  @@map("print_templates")
+}
+
+model PrintTemplateVersion {
+  id            Int      @id @default(autoincrement())
+  templateId    Int      @map("template_id")
+  version       Int
+  status        String   @db.VarChar(20)
+  configuration Json
+  createdBy     Int?     @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  template PrintTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, version])
+  @@map("print_template_versions")
 }
 
 model AppSetting {
@@ -235,6 +318,7 @@ model TaxRate {
   createdAt DateTime @default(now()) @map("created_at")
 
   items SalesInvoiceItem[]
+  companyDefaultSettings CompanySettings[] @relation("CompanyDefaultTax")
   purchaseItems PurchaseInvoiceItem[]
 
   @@map("tax_rates")
@@ -1011,6 +1095,14 @@ model Account {
   parent   Account?  @relation("AccountParent", fields: [parentId], references: [id])
   children Account[] @relation("AccountParent")
   journalLines JournalEntryLine[]
+  companyReceivableSettings CompanySettings[] @relation("CompanyReceivableAccount")
+  companyPayableSettings    CompanySettings[] @relation("CompanyPayableAccount")
+  companyCashSettings       CompanySettings[] @relation("CompanyCashAccount")
+  companyBankSettings       CompanySettings[] @relation("CompanyBankAccount")
+  companyIncomeSettings     CompanySettings[] @relation("CompanyIncomeAccount")
+  companyExpenseSettings    CompanySettings[] @relation("CompanyExpenseAccount")
+  companyStockSettings      CompanySettings[] @relation("CompanyStockAccount")
+  companyCogsSettings       CompanySettings[] @relation("CompanyCogsAccount")
 
   @@map("accounts")
 }

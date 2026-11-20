@@ -22,7 +22,7 @@ import { ErrorState, Spinner } from '@/components/ui/Feedback'
 import { useFetch } from '@/hooks/useFetch'
 import { api, getErrorMessage } from '@/lib/api'
 import {
-  formatCurrency,
+  formatCurrency as formatCurrencyBase,
   formatDate,
   formatDateTime,
   formatNumber,
@@ -30,7 +30,7 @@ import {
   openPrintWindow,
   toNumber,
 } from '@/lib/utils'
-import type { Customer, Paginated } from '@/types'
+import type { CompanySettings, Customer, Paginated } from '@/types'
 
 type BadgeTone = 'green' | 'red' | 'amber' | 'slate' | 'indigo'
 
@@ -128,6 +128,8 @@ export function SalesPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
+  const { data: company } = useFetch<CompanySettings>('/settings/company')
+  const formatCurrency = (value: unknown) => formatCurrencyBase(value, company)
 
   const [openId, setOpenId] = useState<string | number | null>(null)
   const [detail, setDetail] = useState<InvoiceDetail | null>(null)
@@ -230,7 +232,28 @@ export function SalesPage() {
 
   function reprintInvoice() {
     if (!detail) return
-    const storeName = 'Pyloom POS'
+    const storeName = company?.tradingName || company?.companyName || 'Pyloom POS'
+    const escapeHtml = (value: string) =>
+      value.replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[character] ?? character)
+    const logo = company?.invoiceLogo || company?.companyLogo
+    const companyInfo = [
+      company?.addressLine1,
+      company?.addressLine2,
+      [company?.city, company?.stateProvince, company?.country].filter(Boolean).join(', '),
+      [company?.phone, company?.email, company?.website].filter(Boolean).join(' · '),
+      company?.panVatNumber ? `PAN/VAT: ${company.panVatNumber}` : '',
+    ].filter((line): line is string => Boolean(line))
+    const companyHeader = `
+      ${logo ? `<img src="${escapeHtml(logo)}" alt="" style="display:block;max-height:64px;max-width:220px;object-fit:contain;margin:0 auto 10px;" />` : ''}
+      <h2 style="margin:0 0 4px;text-align:center;">${escapeHtml(storeName)}</h2>
+      ${companyInfo.map((line) => `<div class="muted" style="text-align:center;">${escapeHtml(line)}</div>`).join('')}
+    `
     const lines = detail.items
       .map((line) => {
         const unit =
@@ -257,9 +280,10 @@ export function SalesPage() {
       })
       .join('')
     const html = `
+      ${companyHeader}
       <h1>Sales Invoice — ${detail.invoiceNumber}</h1>
       <p class="muted">
-        ${storeName} · ${formatDate(detail.invoiceDate)}<br />
+        ${formatDate(detail.invoiceDate)}<br />
         Customer: ${detail.customer?.name ?? 'Walk-in'}${detail.customer?.phone ? ` · ${detail.customer.phone}` : ''}<br />
         Cashier: ${detail.cashier?.fullName ?? '—'} · Status: ${detail.status.replace('_', ' ')}
       </p>

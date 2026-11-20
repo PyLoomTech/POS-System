@@ -1,0 +1,48 @@
+name: Deploy to Orbital
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Trigger Orbital Blue-Green Rollout
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Deployment Webhook
+        run: |
+          PAYLOAD=$(cat << 'EOF'
+          {
+            "ref": "${{ github.ref }}",
+            "after": "${{ github.sha }}",
+            "head_commit": {
+              "id": "${{ github.sha }}",
+              "message": ${{ toJson(github.event.head_commit.message) }}
+            },
+            "sender": {
+              "login": "${{ github.actor }}"
+            }
+          }
+          EOF
+          )
+
+          echo "Triggering Orbital rollout for commit ${{ github.sha }}..."
+
+          RESPONSE=$(curl -k -s -w "\n%{http_code}" -X POST \
+            -H "Host: orbital.pyloomtech.com" \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: push" \
+            https://193.181.211.219/api/webhooks/github/pos/ \
+            -d "$PAYLOAD")
+
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          STATUS=$(echo "$RESPONSE" | tail -n1)
+
+          echo "HTTP Status: $STATUS"
+          echo "Orbital Response: $BODY"
+
+          if [ "$STATUS" -ne 200 ]; then
+            echo "::error::Orbital deployment failed with HTTP $STATUS"
+            exit 1
+          fi

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, Plus, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { FeedList, initials } from '@/components/ui/FeedList'
@@ -280,6 +281,10 @@ function ItemPicker({
 }
 
 export function PurchasesPage() {
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const linkedInvoiceId = searchParams.get('invoiceId')
+  const openedInvoiceRef = useRef<string | null>(null)
   const today = useMemo(() => new Date(), [])
   const monthStart = useMemo(() => new Date(today.getFullYear(), today.getMonth(), 1), [today])
 
@@ -471,6 +476,23 @@ export function PurchasesPage() {
       setViewError(getErrorMessage(err))
     } finally {
       setViewLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (linkedInvoiceId && linkedInvoiceId !== openedInvoiceRef.current) {
+      openedInvoiceRef.current = linkedInvoiceId
+      void openView(linkedInvoiceId)
+    }
+  }, [linkedInvoiceId])
+
+  function closeView() {
+    setViewOpen(false)
+    if (linkedInvoiceId) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('invoiceId')
+      setSearchParams(next, { replace: true })
+      openedInvoiceRef.current = null
     }
   }
 
@@ -688,9 +710,9 @@ export function PurchasesPage() {
                   return (
                     <div
                       key={line.key}
-                      className="grid grid-cols-12 items-end gap-2 rounded-xl border border-line bg-line-2/50 p-3"
+                      className="grid grid-cols-2 items-end gap-2 rounded-xl border border-line bg-line-2/50 p-3 sm:grid-cols-12"
                     >
-                      <div className="col-span-12 sm:col-span-3">
+                      <div className="col-span-2 sm:col-span-3">
                         <span className="mb-1 block text-[11px] font-medium text-ink-3">
                           Item
                         </span>
@@ -699,7 +721,7 @@ export function PurchasesPage() {
                           onSelect={(item) => selectItem(line.key, item)}
                         />
                       </div>
-                      <div className="col-span-4 sm:col-span-2">
+                      <div className="col-span-1 sm:col-span-2">
                         <span className="mb-1 block text-[11px] font-medium text-ink-3">UOM</span>
                         <Select
                           value={line.unitId ?? ''}
@@ -722,8 +744,10 @@ export function PurchasesPage() {
                           ))}
                         </Select>
                       </div>
-                      <div className="col-span-4 sm:col-span-1">
-                        <span className="mb-1 block text-[11px] font-medium text-ink-3">Qty</span>
+                      <div className="col-span-1 sm:col-span-2">
+                        <span className="mb-1 block text-[11px] font-medium text-ink-3">
+                          Qty ({line.unitLabel || 'unit'})
+                        </span>
                         <Input
                           type="number"
                           step="0.01"
@@ -732,9 +756,9 @@ export function PurchasesPage() {
                           onChange={(event) => patchLine(line.key, { quantity: event.target.value })}
                         />
                       </div>
-                      <div className="col-span-4 sm:col-span-2">
+                      <div className="col-span-1 sm:col-span-2">
                         <span className="mb-1 block text-[11px] font-medium text-ink-3">
-                          Unit cost
+                          Cost / {line.unitLabel || 'unit'}
                         </span>
                         <Input
                           type="number"
@@ -744,7 +768,7 @@ export function PurchasesPage() {
                           onChange={(event) => patchLine(line.key, { unitCost: event.target.value })}
                         />
                       </div>
-                      <div className="col-span-4 sm:col-span-1">
+                      <div className="col-span-1 sm:col-span-1">
                         <span className="mb-1 block text-[11px] font-medium text-ink-3">
                           Disc %
                         </span>
@@ -759,7 +783,13 @@ export function PurchasesPage() {
                           }
                         />
                       </div>
-                      <div className="col-span-12 flex items-center justify-between gap-2 sm:col-span-3">
+                      <div className="col-span-2 flex items-center justify-between gap-2 sm:col-span-2">
+                        {line.conversionFactor !== 1 && (
+                          <span className="mr-auto text-[11px] text-ink-3">
+                            {formatNumber(line.quantity, 2)} {line.unitLabel} ={' '}
+                            {formatNumber(toNumber(line.quantity) * line.conversionFactor, 2)} Pcs
+                          </span>
+                        )}
                         <span className="ml-auto text-sm font-semibold text-ink">
                           {formatCurrency(calc.lineTotal)}
                         </span>
@@ -831,11 +861,25 @@ export function PurchasesPage() {
         open={viewOpen}
         title={viewDetail ? `Purchase ${viewDetail.invoiceNumber}` : 'Purchase Invoice'}
         size="lg"
-        onClose={() => setViewOpen(false)}
+        onClose={closeView}
         footer={
-          <Button variant="outline" onClick={() => setViewOpen(false)}>
-            Close
-          </Button>
+          <>
+            {viewDetail && viewDetail.status !== 'cancelled' && (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  navigate(
+                    `/returns?tab=purchases&purchaseInvoiceId=${encodeURIComponent(String(viewDetail.id))}`,
+                  )
+                }
+              >
+                Return items
+              </Button>
+            )}
+            <Button variant="outline" onClick={closeView}>
+              Close
+            </Button>
+          </>
         }
       >
         {viewLoading ? (

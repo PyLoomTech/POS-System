@@ -4,6 +4,7 @@ import {
   Banknote,
   Barcode,
   ImagePlus,
+  Mail,
   Minus,
   Plus,
   Printer,
@@ -20,6 +21,8 @@ import { Field, Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Feedback'
+import { ShiftControls } from '@/components/shifts/ShiftControls'
+import type { CashierShift } from '@/components/shifts/ShiftControls'
 import { useFetch } from '@/hooks/useFetch'
 import { api, getErrorMessage } from '@/lib/api'
 import {
@@ -28,6 +31,7 @@ import {
   formatCurrency,
   formatDate,
   formatNumber,
+  getPriceListDisplayName,
   toNumber,
 } from '@/lib/utils'
 import type {
@@ -216,8 +220,11 @@ export function PosPage() {
   const [qrOpen, setQrOpen] = useState(false)
 
   const [charging, setCharging] = useState(false)
+  const [emailRetrying, setEmailRetrying] = useState(false)
+  const [emailRetryError, setEmailRetryError] = useState<string | null>(null)
   const [chargeError, setChargeError] = useState<string | null>(null)
   const [receipt, setReceipt] = useState<SalesInvoiceDetail | null>(null)
+  const [activeShift, setActiveShift] = useState<CashierShift | null>(null)
 
   const { data: taxRates } = useFetch<TaxRate[]>('/items/tax-rates')
   const { data: priceLists } = useFetch<PriceList[]>('/items/price-lists')
@@ -226,12 +233,17 @@ export function PosPage() {
     '/customers?limit=100',
   )
   const { data: company } = useFetch<CompanySettings>('/settings/company')
+  const { data: currentShift, reload: reloadCurrentShift } = useFetch<CashierShift>('/shifts/current')
 
   const [customerOpen, setCustomerOpen] = useState(false)
   const [customerForm, setCustomerForm] = useState<CustomerForm>(EMPTY_CUSTOMER)
   const [customerSaving, setCustomerSaving] = useState(false)
   const [customerError, setCustomerError] = useState<string | null>(null)
   const [selectedPriceListId, setSelectedPriceListId] = useState('')
+
+  useEffect(() => {
+    setActiveShift(currentShift)
+  }, [currentShift])
 
   useEffect(() => {
     if (walkin && !customerId) setCustomerId(String(walkin.id))
@@ -455,6 +467,7 @@ export function PosPage() {
 
   const change = method === 'cash' ? Math.max(0, tenderedNumber - totals.grandTotal) : 0
   const canCharge =
+    activeShift !== null &&
     lines.length > 0 &&
     customerId !== '' &&
     !charging &&
@@ -467,12 +480,14 @@ export function PosPage() {
     try {
       const payload = {
         customerId: Number(customerId),
+        sessionId: Number(activeShift!.id),
         isCredit,
         invoiceDiscount: toNumber(invoiceDiscount),
         idempotencyKey: crypto.randomUUID(),
         items: lines.map((line) => ({
           itemId: line.itemId,
           unitId: line.unitId || undefined,
+          priceListId: line.priceListId,
           quantity: line.quantity,
           unitPrice: line.unitPrice,
           discountPct: line.discountPct,
@@ -492,6 +507,7 @@ export function PosPage() {
       }
       const { data } = await api.post<SalesInvoiceDetail>('/sales', payload)
       setReceipt(data)
+      setEmailRetryError(null)
       setQrOpen(false)
       setLines([])
       setInvoiceDiscount('')
@@ -499,6 +515,7 @@ export function PosPage() {
       setMethod('cash')
       // Re-pull the catalogue so the on-hand stock badges reflect the sale.
       setRefreshKey((key) => key + 1)
+      reloadCurrentShift()
     } catch (err) {
       setChargeError(getErrorMessage(err))
     } finally {
@@ -506,8 +523,32 @@ export function PosPage() {
     }
   }
 
+  async function onRetryInvoiceEmail() {
+    if (!receipt) return
+    setEmailRetrying(true)
+    setEmailRetryError(null)
+    try {
+      const { data } = await api.post<Pick<SalesInvoiceDetail,
+        'emailNotificationStatus' | 'emailSentAt' | 'emailNotificationError' | 'emailNotification'
+      >>(`/sales/${receipt.id}/email`)
+      setReceipt((current) => current ? { ...current, ...data } : null)
+    } catch (err) {
+      setEmailRetryError(getErrorMessage(err))
+    } finally {
+      setEmailRetrying(false)
+    }
+  }
+
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="col-span-full">
+        <ShiftControls
+          shift={activeShift}
+          onShiftChange={setActiveShift}
+          onRefresh={reloadCurrentShift}
+          compact
+        />
+      </div>
       {/* ── Catalogue ─────────────────────────────────────── */}
       <div className="space-y-4">
         <Card className="p-3">
@@ -575,6 +616,11 @@ export function PosPage() {
             {entries.map((entry) => {
               const item = entry.item
               const stock = stockOf(item)
+              const selectedUnit = unitChoices(item).find((unit) => unit.id === entry.unitId)
+              const displayPriceListName = getPriceListDisplayName(
+                entry.priceListName,
+                `${selectedUnit?.name ?? ''} ${selectedUnit?.abbreviation ?? ''}`,
+              )
               return (
                 <button
                   key={entry.key}
@@ -596,7 +642,7 @@ export function PosPage() {
                   <div className="flex flex-1 flex-col gap-1 p-3">
                     <p className="line-clamp-2 text-sm font-medium text-ink">
                       {item.name}
-                      {entry.priceListName ? ` (${entry.priceListName})` : ''}
+                      {displayPriceListName ? ` (${displayPriceListName})` : ''}
                     </p>
                     <p className="font-mono text-[11px] text-ink-3">{item.itemCode}</p>
                     <div className="mt-auto flex items-center justify-between pt-1">
@@ -675,20 +721,25 @@ export function PosPage() {
                 const listName = line.priceListId != null
                   ? priceLists?.find((list) => list.id === line.priceListId)?.name
                   : null
+                const selectedUnit = units.find((unit) => unit.id === line.unitId)
+                const displayPriceListName = getPriceListDisplayName(
+                  listName,
+                  `${selectedUnit?.name ?? ''} ${selectedUnit?.abbreviation ?? ''}`,
+                )
                 return (
                   <li key={line.key} className="rounded-2xl border border-line p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-ink">
                           {line.name}
-                          {listName ? ` (${listName})` : ''}
+                          {displayPriceListName ? ` (${displayPriceListName})` : ''}
                         </p>
                         <p className="text-[11px] text-ink-3">
                           {formatCurrency(line.unitPrice)} / {line.unitLabel} · stock {formatNumber(line.stock, 0)} {item?.unit?.abbreviation || item?.unit?.name}
                         </p>
                         {item && units.length > 1 && (
                           <Select
-                            className="mt-1 h-7 py-0 text-xs"
+                            className="mt-1 h-9 min-w-0 py-1 text-xs leading-normal"
                             value={line.unitId}
                             aria-label={`Unit for ${line.name}`}
                             onChange={(event) => {
@@ -1024,6 +1075,37 @@ export function PosPage() {
         }
       >
         {receipt && (
+          <>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line-2 bg-surface-2 p-3 text-sm">
+            <div className="flex items-start gap-2">
+              <Mail size={17} className="mt-0.5 shrink-0 text-accent-2" />
+              <div>
+                <p className="font-medium text-ink">
+                  Invoice email · {receipt.emailNotification?.status ?? receipt.emailNotificationStatus ?? 'pending'}
+                </p>
+                <p className="text-ink-3">
+                  {emailRetryError
+                    ?? receipt.emailNotification?.message
+                    ?? receipt.emailNotificationError
+                    ?? 'Email delivery status is not available.'}
+                </p>
+                {receipt.customer?.email && (
+                  <p className="text-xs text-ink-3">Recipient: {receipt.customer.email}</p>
+                )}
+              </div>
+            </div>
+            {receipt.customer?.email && (
+              <Button
+                size="sm"
+                variant="outline"
+                loading={emailRetrying}
+                icon={<Mail size={15} />}
+                onClick={() => void onRetryInvoiceEmail()}
+              >
+                {receipt.emailNotificationStatus === 'sent' ? 'Send again' : 'Retry email'}
+              </Button>
+            )}
+          </div>
           <div id="pos-receipt" className="text-ink">
             <div className="border-b border-dashed border-line pb-3 text-center">
               <p className="text-base font-semibold">
@@ -1058,16 +1140,27 @@ export function PosPage() {
                 </tr>
               </thead>
               <tbody>
-                {receipt.items.map((line) => (
-                  <tr key={line.id} className="border-b border-line-2">
-                    <td className="py-1.5">{line.item?.name ?? `Item #${line.itemId}`}</td>
-                    <td className="py-1.5 text-right">
-                      {formatNumber(line.quantity, 2)} {line.unit?.abbreviation || line.unit?.name || line.item?.unit?.abbreviation || line.item?.unit?.name || ''}
-                    </td>
-                    <td className="py-1.5 text-right">{formatCurrency(line.unitPrice)}</td>
-                    <td className="py-1.5 text-right">{formatCurrency(line.lineTotal)}</td>
-                  </tr>
-                ))}
+                {receipt.items.map((line) => {
+                  const unitName =
+                    `${line.unit?.name ?? line.item?.unit?.name ?? ''} ${line.unit?.abbreviation ?? line.item?.unit?.abbreviation ?? ''}`
+                  const displayPriceListName = getPriceListDisplayName(
+                    line.priceList?.name,
+                    unitName,
+                  )
+                  return (
+                    <tr key={line.id} className="border-b border-line-2">
+                      <td className="py-1.5">
+                        {line.item?.name ?? `Item #${line.itemId}`}
+                        {displayPriceListName ? ` (${displayPriceListName})` : ''}
+                      </td>
+                      <td className="py-1.5 text-right">
+                        {formatNumber(line.quantity, 2)} {line.unit?.abbreviation || line.unit?.name || line.item?.unit?.abbreviation || line.item?.unit?.name || ''}
+                      </td>
+                      <td className="py-1.5 text-right">{formatCurrency(line.unitPrice)}</td>
+                      <td className="py-1.5 text-right">{formatCurrency(line.lineTotal)}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
 
@@ -1125,6 +1218,7 @@ export function PosPage() {
               {company?.invoiceFooter ?? 'Thank you for your business!'}
             </p>
           </div>
+          </>
         )}
       </Modal>
     </div>

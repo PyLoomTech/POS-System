@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import type { ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode, RefObject } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Activity,
   AlertTriangle,
@@ -8,9 +9,16 @@ import {
   BarChart3,
   Boxes,
   CalendarDays,
+  ChevronDown,
+  Download,
+  FileSpreadsheet,
   FolderTree,
+  FileText,
   Package,
   Percent,
+  Printer,
+  RefreshCw,
+  RotateCcw,
   ShoppingCart,
   TrendingUp,
   UserRound,
@@ -21,10 +29,21 @@ import { Card, CardHeader, StatCard } from '@/components/ui/Card'
 import { DataTable } from '@/components/ui/DataTable'
 import type { Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
-import { Field, Input } from '@/components/ui/Input'
+import { Field, Input, Select } from '@/components/ui/Input'
+import { DateRangePresets, presetRange } from '@/components/ui/DateRangePresets'
 import { EmptyState, ErrorState, Spinner } from '@/components/ui/Feedback'
+import { Modal } from '@/components/ui/Modal'
 import { useFetch } from '@/hooks/useFetch'
-import { cn, formatCurrency, formatDate, formatDateTime, formatNumber, toNumber } from '@/lib/utils'
+import { api } from '@/lib/api'
+import {
+  cn,
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  formatNumber,
+  openPrintWindow,
+  toNumber,
+} from '@/lib/utils'
 
 // ---------------------------------------------------------------
 // Types (mirrors of the backend controller response shapes)
@@ -52,9 +71,74 @@ interface SalesByItemRow {
   itemId: number
   itemCode: string
   name: string
+  category: string
   quantity: Money
   revenue: Money
+  discount: Money
   tax: Money
+  netRevenue: Money
+  transactionCount: number
+  averageSellingPrice: Money
+}
+
+interface SalesItemHistoryRow {
+  id: string
+  date: string
+  reference: string
+  customer: string
+  quantity: Money
+  unitPrice: Money
+  discount: Money
+  tax: Money
+  amount: Money
+}
+
+interface SalesRegisterRow {
+  id: string | number
+  invoiceNumber: string
+  invoiceDate: string
+  subtotal: Money
+  discountAmount: Money
+  taxAmount: Money
+  grandTotal: Money
+  paidAmount: Money
+  outstandingAmount: Money
+  paymentStatus: string
+  paymentMethod: string | null
+  status: string
+  customer: { name: string; phone: string | null } | null
+  cashier: { fullName: string } | null
+}
+
+interface SalesReturnRow {
+  id: string | number
+  returnNumber: string
+  returnDate: string
+  subtotal: Money
+  taxAmount: Money
+  totalAmount: Money
+  refundAmount: Money
+  refundMethod: string | null
+  status: string
+  returnedQuantity: Money
+  processedByName: string | null
+  customer: { name: string; phone: string | null }
+  originalInvoice: { id: string | number; invoiceNumber: string }
+  items: Array<{ item: { name: string; itemCode: string }; returnedQty: Money }>
+}
+
+interface ReportPage<T> {
+  data: T[]
+  total: number
+  page: number
+  limit: number
+  summary?: {
+    invoiceCount: number
+    grossSales: Money
+    discount: Money
+    collected: Money
+    outstanding: Money
+  }
 }
 
 interface SalesByCategoryRow {
@@ -174,22 +258,6 @@ interface VatData {
   netVatPayable: Money
 }
 
-interface LedgerRow {
-  customerId?: number
-  supplierId?: number
-  customerCode?: string | null
-  supplierCode?: string | null
-  name: string
-  phone: string | null
-  outstanding: Money
-  invoiceCount: number
-}
-
-interface LedgerData {
-  data: LedgerRow[]
-  total: Money
-}
-
 interface DayBookInvoice {
   id: string | number
   invoiceNumber: string
@@ -254,10 +322,12 @@ const STATUS_TONES: Record<string, 'green' | 'red' | 'amber' | 'slate' | 'indigo
 
 type TabKey =
   | 'summary'
+  | 'sales-register'
   | 'by-item'
   | 'by-category'
   | 'by-customer'
   | 'by-cashier'
+  | 'sales-returns'
   | 'purchases'
   | 'pl'
   | 'vat'
@@ -267,41 +337,170 @@ type TabKey =
   | 'receivables'
   | 'payables'
   | 'daybook'
+  | 'daily-sales'
+  | 'discount-report'
+  | 'payment-collection'
+  | 'sales-item-history'
+  | 'purchase-register'
+  | 'purchase-by-item'
+  | 'purchase-by-supplier'
+  | 'purchase-return-register'
+  | 'purchase-item-history'
+  | 'balance-sheet'
+  | 'trial-balance'
+  | 'general-ledger'
+  | 'cash-book'
+  | 'bank-book'
+  | 'customer-ledger'
+  | 'supplier-ledger'
+  | 'expense-report'
+  | 'cash-flow'
+  | 'profit-loss'
+  | 'stock-valuation'
+  | 'stock-movements'
+  | 'day-book'
+  | 'stock-balance'
+  | 'stock-ledger'
+  | 'stock-ageing'
+  | 'item-profitability'
+  | 'warehouse-stock'
+  | 'sales-vat-register'
+  | 'purchase-vat-register'
+  | 'vat-return-summary'
+  | 'sales-return-vat'
+  | 'purchase-return-vat'
+
+const WORKSPACE_TABS: TabKey[] = [
+  'daily-sales', 'discount-report', 'payment-collection', 'sales-item-history',
+  'purchase-register', 'purchase-by-item', 'purchase-by-supplier',
+  'purchase-return-register', 'purchase-item-history', 'balance-sheet',
+  'trial-balance', 'general-ledger', 'cash-book', 'bank-book',
+  'customer-ledger', 'supplier-ledger', 'expense-report', 'cash-flow',
+  'profit-loss', 'stock-balance', 'stock-ledger', 'stock-valuation',
+  'stock-movements', 'stock-ageing', 'item-profitability',
+  'warehouse-stock', 'sales-vat-register', 'purchase-vat-register',
+  'vat-return-summary', 'sales-return-vat', 'purchase-return-vat',
+  'day-book', 'receivables', 'payables',
+]
 
 const REPORT_GROUPS: { label: string; items: { key: TabKey; label: string; icon: ReactNode }[] }[] = [
   {
     label: 'Sales',
     items: [
       { key: 'summary', label: 'Sales Summary', icon: <BarChart3 size={15} /> },
+      { key: 'sales-register', label: 'Sales Register', icon: <FileText size={15} /> },
       { key: 'by-item', label: 'Sales by Item', icon: <Package size={15} /> },
       { key: 'by-category', label: 'Sales by Category', icon: <FolderTree size={15} /> },
       { key: 'by-customer', label: 'Sales by Customer', icon: <UsersRound size={15} /> },
       { key: 'by-cashier', label: 'Sales by Cashier', icon: <UserRound size={15} /> },
+      { key: 'daily-sales', label: 'Daily Sales', icon: <CalendarDays size={15} /> },
+      { key: 'sales-returns', label: 'Sales Return Register', icon: <RotateCcw size={15} /> },
+      { key: 'discount-report', label: 'Discount Report', icon: <Percent size={15} /> },
+      { key: 'payment-collection', label: 'Payment Collection', icon: <ArrowDownLeft size={15} /> },
     ],
   },
   {
     label: 'Buying',
-    items: [{ key: 'purchases', label: 'Purchases', icon: <ShoppingCart size={15} /> }],
+    items: [
+      { key: 'purchase-register', label: 'Purchase Register', icon: <ShoppingCart size={15} /> },
+      { key: 'purchase-by-item', label: 'Purchase by Item', icon: <Package size={15} /> },
+      { key: 'purchase-by-supplier', label: 'Purchase by Supplier', icon: <UsersRound size={15} /> },
+      { key: 'purchase-return-register', label: 'Purchase Return Register', icon: <RotateCcw size={15} /> },
+      { key: 'purchase-item-history', label: 'Item Purchase History', icon: <Activity size={15} /> },
+    ],
   },
   {
     label: 'Finance',
     items: [
-      { key: 'pl', label: 'Profit & Loss', icon: <TrendingUp size={15} /> },
-      { key: 'vat', label: 'VAT Report', icon: <Percent size={15} /> },
+      { key: 'profit-loss', label: 'Profit & Loss', icon: <TrendingUp size={15} /> },
+      { key: 'balance-sheet', label: 'Balance Sheet', icon: <BarChart3 size={15} /> },
+      { key: 'general-ledger', label: 'General Ledger', icon: <FileText size={15} /> },
+      { key: 'cash-book', label: 'Cash Book', icon: <ArrowDownLeft size={15} /> },
+      { key: 'bank-book', label: 'Bank Book', icon: <ArrowUpRight size={15} /> },
+      { key: 'day-book', label: 'Day Book', icon: <CalendarDays size={15} /> },
       { key: 'receivables', label: 'Receivables', icon: <ArrowDownLeft size={15} /> },
       { key: 'payables', label: 'Payables', icon: <ArrowUpRight size={15} /> },
-      { key: 'daybook', label: 'Day Book', icon: <CalendarDays size={15} /> },
+      { key: 'customer-ledger', label: 'Customer Ledger', icon: <UserRound size={15} /> },
+      { key: 'supplier-ledger', label: 'Supplier Ledger', icon: <UsersRound size={15} /> },
+      { key: 'expense-report', label: 'Expense Report', icon: <Percent size={15} /> },
+      { key: 'cash-flow', label: 'Cash Flow', icon: <Activity size={15} /> },
     ],
   },
   {
     label: 'Stock',
     items: [
-      { key: 'stock', label: 'Stock Valuation', icon: <Boxes size={15} /> },
+      { key: 'stock-balance', label: 'Stock Balance', icon: <Boxes size={15} /> },
+      { key: 'stock-ledger', label: 'Stock Ledger', icon: <FileText size={15} /> },
+      { key: 'stock-valuation', label: 'Stock Valuation', icon: <Boxes size={15} /> },
+      { key: 'stock-movements', label: 'Stock Movements', icon: <Activity size={15} /> },
       { key: 'low-stock', label: 'Low Stock', icon: <AlertTriangle size={15} /> },
-      { key: 'movements', label: 'Stock Movements', icon: <Activity size={15} /> },
+      { key: 'stock-ageing', label: 'Stock Ageing', icon: <CalendarDays size={15} /> },
+      { key: 'item-profitability', label: 'Item Profitability', icon: <TrendingUp size={15} /> },
+      { key: 'warehouse-stock', label: 'Warehouse Stock', icon: <Boxes size={15} /> },
+    ],
+  },
+  {
+    label: 'Tax',
+    items: [
+      { key: 'sales-vat-register', label: 'Sales VAT Register', icon: <Percent size={15} /> },
+      { key: 'purchase-vat-register', label: 'Purchase VAT Register', icon: <Percent size={15} /> },
+      { key: 'vat-return-summary', label: 'VAT Return Summary', icon: <FileText size={15} /> },
+      { key: 'sales-return-vat', label: 'Sales Return VAT', icon: <RotateCcw size={15} /> },
+      { key: 'purchase-return-vat', label: 'Purchase Return VAT', icon: <RotateCcw size={15} /> },
     ],
   },
 ]
+
+const REPORT_DESCRIPTIONS: Record<TabKey, string> = {
+  summary: 'Track sales, discounts, collections, and returns across the selected period.',
+  'sales-register': 'Review invoices, customer details, payment status, and cashier activity.',
+  'by-item': 'Compare product sales, quantities, discounts, tax, and average selling price.',
+  'by-category': 'Review sales performance across product categories.',
+  'by-customer': 'Compare customer purchase totals, collections, and outstanding balances.',
+  'by-cashier': 'Review invoice totals and collections by cashier.',
+  'sales-returns': 'Review returned sales, tax reversals, refunds, and original invoices.',
+  purchases: 'Review purchase totals, returns, supplier balances, and payment activity.',
+  pl: 'Review recognized revenue, cost of goods sold, expenses, and profit.',
+  vat: 'Compare output VAT on sales against input VAT on purchases.',
+  stock: 'Review current quantities and average-cost inventory value by warehouse.',
+  'low-stock': 'Identify active items at or below their reorder level.',
+  movements: 'Review receipts, sales, returns, and adjustments to inventory.',
+  receivables: 'Review customer balances awaiting collection.',
+  payables: 'Review supplier balances awaiting payment.',
+  daybook: 'Review invoices, payments, and returns posted on a selected day.',
+  'day-book': 'Review posted vouchers, total debits, and credits for the selected period.',
+  'daily-sales': 'Compare daily sales totals, discounts, tax, receipts, and balances.',
+  'discount-report': 'Review invoice-level discounts and the staff who processed them.',
+  'payment-collection': 'Review completed customer receipts and supplier payments.',
+  'sales-item-history': 'Inspect dated sales transactions for a selected item.',
+  'purchase-register': 'Review confirmed purchase invoices, tax, payments, and supplier balances.',
+  'purchase-by-item': 'Compare item quantities, purchase costs, and invoice counts.',
+  'purchase-by-supplier': 'Review confirmed purchases, payments, and balances by supplier.',
+  'purchase-return-register': 'Review completed supplier returns and their original invoices.',
+  'purchase-item-history': 'Inspect dated purchase transactions for a selected item.',
+  'balance-sheet': 'Review asset, liability, and equity balances through the selected date.',
+  'trial-balance': 'Compare opening balances, posted debits, credits, and closing balances.',
+  'general-ledger': 'Inspect posted account entries and running balances.',
+  'cash-book': 'Review posted cash account entries for the selected period.',
+  'bank-book': 'Review posted bank account entries for the selected period.',
+  'customer-ledger': 'Inspect posted journal activity associated with a selected customer.',
+  'supplier-ledger': 'Inspect posted journal activity associated with a selected supplier.',
+  'expense-report': 'Review posted expense account entries and amounts.',
+  'cash-flow': 'Review posted movements through cash and bank accounts.',
+  'profit-loss': 'Review recognized revenue, cost of goods sold, expenses, and profit.',
+  'stock-balance': 'Review current item quantities and values by warehouse.',
+  'stock-valuation': 'Review current quantities and average-cost inventory value by warehouse.',
+  'stock-movements': 'Review receipts, sales, returns, and adjustments to inventory.',
+  'stock-ledger': 'Inspect dated inventory movements and running quantities for an item.',
+  'stock-ageing': 'Review on-hand value and days since the most recent stock receipt.',
+  'item-profitability': 'Compare item revenue, historical cost of goods sold, and gross profit.',
+  'warehouse-stock': 'Review item balances and valuation by warehouse.',
+  'sales-vat-register': 'Review confirmed sales invoices and their recorded VAT.',
+  'purchase-vat-register': 'Review confirmed purchase invoices and their recorded VAT.',
+  'vat-return-summary': 'Summarize output and input VAT, including recorded return adjustments.',
+  'sales-return-vat': 'Review VAT reversals recorded on completed sales returns.',
+  'purchase-return-vat': 'Review completed purchase returns and their recorded amounts.',
+}
 
 // ---------------------------------------------------------------
 // Shared loading / error / empty wrapper used by every tab
@@ -356,6 +555,55 @@ function SummaryRow({
       >
         {value}
       </dd>
+    </div>
+  )
+}
+
+function ReportMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-line-2 bg-white/70 px-3 py-2.5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-ink-3">{label}</p>
+      <p className="mt-1 truncate text-base font-semibold tabular-nums text-ink">{value}</p>
+    </div>
+  )
+}
+
+function ReportPagination({
+  page,
+  limit,
+  total,
+  onPageChange,
+}: {
+  page: number
+  limit: number
+  total: number
+  onPageChange: (page: number) => void
+}) {
+  const pageCount = Math.max(1, Math.ceil(total / limit))
+  if (pageCount <= 1) return null
+  return (
+    <div className="flex items-center justify-between border-t border-line-2 px-5 py-3">
+      <span className="text-xs text-ink-3">
+        Page {page} of {pageCount} · {formatNumber(total)} records
+      </span>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+        >
+          Previous
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page >= pageCount}
+          onClick={() => onPageChange(page + 1)}
+        >
+          Next
+        </Button>
+      </div>
     </div>
   )
 }
@@ -432,7 +680,230 @@ function SalesSummaryTab({ range }: { range: string }) {
   )
 }
 
+function SalesRegisterTab({ range }: { range: string }) {
+  const navigate = useNavigate()
+  const emptyFilters = { search: '', cashier: '', paymentStatus: '', paymentMethod: '', status: '' }
+  const [filters, setFilters] = useState(emptyFilters)
+  const [applied, setApplied] = useState(emptyFilters)
+  const [page, setPage] = useState(1)
+  const url = useMemo(() => {
+    const params = new URLSearchParams(range)
+    params.set('page', String(page))
+    params.set('limit', '50')
+    for (const [key, value] of Object.entries(applied)) {
+      if (value) params.set(key, value)
+    }
+    return `/reports/sales-register?${params.toString()}`
+  }, [range, applied, page])
+  const { data, loading, error, reload } = useFetch<ReportPage<SalesRegisterRow>>(url)
+  const columns: Column<SalesRegisterRow>[] = [
+    {
+      header: 'Invoice',
+      cell: (row) => (
+        <button
+          type="button"
+          className="font-medium text-accent hover:underline"
+          onClick={() => navigate(`/sales?invoiceId=${encodeURIComponent(row.id)}`)}
+        >
+          {row.invoiceNumber}
+        </button>
+      ),
+    },
+    { header: 'Date', cell: (row) => formatDate(row.invoiceDate) },
+    { header: 'Customer', cell: (row) => row.customer?.name ?? 'Walk-in' },
+    { header: 'Phone', cell: (row) => row.customer?.phone ?? '—' },
+    { header: 'Cashier', cell: (row) => row.cashier?.fullName ?? '—' },
+    { header: 'Subtotal', align: 'right', cell: (row) => formatCurrency(row.subtotal) },
+    { header: 'Discount', align: 'right', cell: (row) => formatCurrency(row.discountAmount) },
+    { header: 'Tax', align: 'right', cell: (row) => formatCurrency(row.taxAmount) },
+    {
+      header: 'Grand Total',
+      align: 'right',
+      cell: (row) => <span className="font-semibold">{formatCurrency(row.grandTotal)}</span>,
+    },
+    { header: 'Paid', align: 'right', cell: (row) => formatCurrency(row.paidAmount) },
+    { header: 'Outstanding', align: 'right', cell: (row) => formatCurrency(row.outstandingAmount) },
+    {
+      header: 'Payment',
+      cell: (row) => <Badge tone={row.paymentStatus === 'paid' ? 'green' : row.paymentStatus === 'partial' ? 'amber' : 'red'}>{row.paymentStatus}</Badge>,
+    },
+    { header: 'Method', cell: (row) => row.paymentMethod?.replaceAll('_', ' ') ?? '—' },
+    {
+      header: 'Status',
+      cell: (row) => <Badge tone={STATUS_TONES[row.status] ?? 'slate'}>{row.status.replaceAll('_', ' ')}</Badge>,
+    },
+  ]
+
+  return (
+    <Card>
+      <CardHeader title="Sales Register" subtitle="Posted invoices with payment and cashier details" />
+      <div className="flex flex-wrap items-end gap-3 px-5 py-4">
+        <Field label="Invoice / customer" className="min-w-[220px] flex-1">
+          <Input
+            placeholder="Search invoice, customer, or phone"
+            value={filters.search}
+            onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
+          />
+        </Field>
+        <Field label="Cashier">
+          <Input value={filters.cashier} onChange={(event) => setFilters((prev) => ({ ...prev, cashier: event.target.value }))} />
+        </Field>
+        <Field label="Payment status">
+          <Select value={filters.paymentStatus} onChange={(event) => setFilters((prev) => ({ ...prev, paymentStatus: event.target.value }))}>
+            <option value="">All</option>
+            <option value="paid">Paid</option>
+            <option value="partial">Partial</option>
+            <option value="unpaid">Unpaid</option>
+          </Select>
+        </Field>
+        <Field label="Payment method">
+          <Select value={filters.paymentMethod} onChange={(event) => setFilters((prev) => ({ ...prev, paymentMethod: event.target.value }))}>
+            <option value="">All</option>
+            <option value="cash">Cash</option>
+            <option value="bank_transfer">Bank transfer</option>
+            <option value="card">Card</option>
+            <option value="digital_wallet">Digital wallet</option>
+            <option value="qr">QR</option>
+            <option value="customer_credit">Customer credit</option>
+            <option value="split">Split</option>
+          </Select>
+        </Field>
+        <Field label="Invoice status">
+          <Select value={filters.status} onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}>
+            <option value="">All</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="draft">Draft</option>
+            <option value="returned">Returned</option>
+            <option value="cancelled">Cancelled</option>
+          </Select>
+        </Field>
+        <Button onClick={() => { setApplied(filters); setPage(1) }}>Apply</Button>
+        <Button variant="outline" onClick={() => {
+          setFilters(emptyFilters)
+          setApplied(emptyFilters)
+          setPage(1)
+        }}>Clear</Button>
+      </div>
+      {data?.summary && (
+        <div className="grid grid-cols-2 gap-2 px-5 pb-4 sm:grid-cols-3 xl:grid-cols-5">
+          <ReportMetric label="Invoices" value={formatNumber(data.summary.invoiceCount)} />
+          <ReportMetric label="Gross sales" value={formatCurrency(data.summary.grossSales)} />
+          <ReportMetric label="Discount" value={formatCurrency(data.summary.discount)} />
+          <ReportMetric label="Collected" value={formatCurrency(data.summary.collected)} />
+          <ReportMetric label="Outstanding" value={formatCurrency(data.summary.outstanding)} />
+        </div>
+      )}
+      <DataTable
+        columns={columns}
+        rows={data?.data ?? []}
+        rowKey={(row) => row.id}
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyTitle="No sales invoices"
+        emptyDescription="No invoices matched the selected filters."
+      />
+      {data && <ReportPagination page={data.page} limit={data.limit} total={data.total} onPageChange={setPage} />}
+    </Card>
+  )
+}
+
+function SalesReturnRegisterTab({ range }: { range: string }) {
+  const navigate = useNavigate()
+  const [search, setSearch] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const url = useMemo(() => {
+    const params = new URLSearchParams(range)
+    params.set('page', String(page))
+    params.set('limit', '50')
+    if (appliedSearch) params.set('search', appliedSearch)
+    return `/reports/sales-return-register?${params.toString()}`
+  }, [range, appliedSearch, page])
+  const { data, loading, error, reload } = useFetch<ReportPage<SalesReturnRow>>(url)
+  const columns: Column<SalesReturnRow>[] = [
+    { header: 'Return', cell: (row) => <span className="font-medium text-ink">{row.returnNumber}</span> },
+    {
+      header: 'Original Invoice',
+      cell: (row) => (
+        <button
+          type="button"
+          className="font-medium text-accent hover:underline"
+          onClick={() => navigate(`/sales?invoiceId=${encodeURIComponent(row.originalInvoice.id)}`)}
+        >
+          {row.originalInvoice.invoiceNumber}
+        </button>
+      ),
+    },
+    { header: 'Date', cell: (row) => formatDate(row.returnDate) },
+    { header: 'Customer', cell: (row) => row.customer?.name ?? 'Walk-in' },
+    {
+      header: 'Items',
+      cell: (row) => (
+        <span title={row.items.map((entry) => `${entry.item.name} (${entry.item.itemCode})`).join(', ')}>
+          {row.items.map((entry) => entry.item.name).join(', ') || '—'}
+        </span>
+      ),
+    },
+    { header: 'Qty', align: 'right', cell: (row) => formatNumber(row.returnedQuantity, 2) },
+    { header: 'Return Amount', align: 'right', cell: (row) => formatCurrency(row.totalAmount) },
+    { header: 'Tax Reversal', align: 'right', cell: (row) => formatCurrency(row.taxAmount) },
+    { header: 'Refund', align: 'right', cell: (row) => formatCurrency(row.refundAmount) },
+    { header: 'Method', cell: (row) => row.refundMethod?.replaceAll('_', ' ') ?? '—' },
+    { header: 'Processed By', cell: (row) => row.processedByName ?? '—' },
+  ]
+
+  return (
+    <Card>
+      <CardHeader title="Sales Return Register" subtitle="Completed sales returns and refunds" />
+      <div className="flex flex-wrap items-end gap-3 px-5 py-4">
+        <Field label="Search return, invoice, customer, or item" className="min-w-[260px] flex-1">
+          <Input value={search} onChange={(event) => setSearch(event.target.value)} />
+        </Field>
+        <Button onClick={() => { setAppliedSearch(search); setPage(1) }}>Apply</Button>
+        <Button variant="outline" onClick={() => { setSearch(''); setAppliedSearch(''); setPage(1) }}>Clear</Button>
+      </div>
+      <DataTable
+        columns={columns}
+        rows={data?.data ?? []}
+        rowKey={(row) => row.id}
+        loading={loading}
+        error={error}
+        onRetry={reload}
+        emptyTitle="No sales returns"
+        emptyDescription="No returns matched the selected filters."
+      />
+      {data && <ReportPagination page={data.page} limit={data.limit} total={data.total} onPageChange={setPage} />}
+    </Card>
+  )
+}
+
 function SalesByItemTab({ range }: { range: string }) {
+  const navigate = useNavigate()
+  const [filters, setFilters] = useState({ search: '', categoryId: '', invoice: '', customer: '', cashier: '' })
+  const [applied, setApplied] = useState(filters)
+  const [page, setPage] = useState(1)
+  const [selectedItem, setSelectedItem] = useState<SalesByItemRow | null>(null)
+  const [historyPage, setHistoryPage] = useState(1)
+  const { data: categories } = useFetch<Array<{ id: number; name: string }>>('/categories')
+  const historyUrl = useMemo(() => {
+    const params = new URLSearchParams(range)
+    params.set('itemId', String(selectedItem?.itemId ?? ''))
+    params.set('page', String(historyPage))
+    params.set('limit', '25')
+    return `/reports/workspace/sales-item-history?${params.toString()}`
+  }, [historyPage, range, selectedItem?.itemId])
+  const history = useFetch<ReportPage<SalesItemHistoryRow>>(historyUrl, selectedItem !== null)
+  const url = useMemo(() => {
+    const params = new URLSearchParams(range)
+    params.set('page', String(page))
+    params.set('limit', '50')
+    for (const [key, value] of Object.entries(applied)) {
+      if (value) params.set(key, value)
+    }
+    return `/reports/sales-by-item?${params.toString()}`
+  }, [range, applied, page])
+  const { data, loading, error, reload } = useFetch<ReportPage<SalesByItemRow>>(url)
   const columns: Column<SalesByItemRow>[] = [
     {
       header: 'Code',
@@ -440,7 +911,18 @@ function SalesByItemTab({ range }: { range: string }) {
     },
     {
       header: 'Item',
-      cell: (row) => <span className="font-medium text-ink">{row.name}</span>,
+      cell: (row) => (
+        <button
+          type="button"
+          className="text-left font-medium text-accent hover:underline"
+          onClick={() => {
+            setSelectedItem(row)
+            setHistoryPage(1)
+          }}
+        >
+          {row.name}<span className="block text-xs font-normal text-ink-3">{row.category}</span>
+        </button>
+      ),
     },
     {
       header: 'Quantity',
@@ -448,30 +930,136 @@ function SalesByItemTab({ range }: { range: string }) {
       cell: (row) => formatNumber(row.quantity, 2),
     },
     {
-      header: 'Revenue',
+      header: 'Sales',
       align: 'right',
       cell: (row) => (
         <span className="font-semibold text-ink">{formatCurrency(row.revenue)}</span>
       ),
     },
+    { header: 'Discount', align: 'right', cell: (row) => formatCurrency(row.discount) },
     {
       header: 'Tax',
       align: 'right',
       cell: (row) => <span className="text-ink-3">{formatCurrency(row.tax)}</span>,
     },
+    { header: 'Net Revenue', align: 'right', cell: (row) => formatCurrency(row.netRevenue) },
+    { header: 'Transactions', align: 'right', cell: (row) => formatNumber(row.transactionCount) },
+    { header: 'Avg. Price', align: 'right', cell: (row) => formatCurrency(row.averageSellingPrice) },
   ]
 
   return (
     <Card>
-      <CardHeader title="Sales by Item" subtitle="Revenue grouped by product" />
-      <ReportSection<{ data: SalesByItemRow[] }>
-        url={`/reports/sales-by-item?${range}`}
+      <CardHeader title="Sales by Item" subtitle="Search by item, category, customer, cashier, or invoice" />
+      <div className="flex flex-wrap items-end gap-3 px-5 py-4">
+        <Field label="Search item" className="min-w-[220px] flex-1">
+          <Input
+            placeholder="Name, code, or barcode"
+            value={filters.search}
+            onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
+          />
+        </Field>
+        <Field label="Category">
+          <Select
+            value={filters.categoryId}
+            onChange={(event) => setFilters((prev) => ({ ...prev, categoryId: event.target.value }))}
+          >
+            <option value="">All categories</option>
+            {(categories ?? []).map((category) => (
+              <option key={category.id} value={category.id}>{category.name}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Invoice">
+          <Input
+            value={filters.invoice}
+            onChange={(event) => setFilters((prev) => ({ ...prev, invoice: event.target.value }))}
+          />
+        </Field>
+        <Field label="Customer">
+          <Input
+            value={filters.customer}
+            onChange={(event) => setFilters((prev) => ({ ...prev, customer: event.target.value }))}
+          />
+        </Field>
+        <Field label="Cashier">
+          <Input
+            value={filters.cashier}
+            onChange={(event) => setFilters((prev) => ({ ...prev, cashier: event.target.value }))}
+          />
+        </Field>
+        <Button onClick={() => { setApplied(filters); setPage(1) }}>Apply</Button>
+        <Button variant="outline" onClick={() => {
+          const cleared = { search: '', categoryId: '', invoice: '', customer: '', cashier: '' }
+          setFilters(cleared)
+          setApplied(cleared)
+          setPage(1)
+        }}>Clear</Button>
+      </div>
+      <DataTable
+        columns={columns}
+        rows={data?.data ?? []}
+        rowKey={(row) => row.itemId}
+        loading={loading}
+        error={error}
+        onRetry={reload}
         emptyTitle="No item sales"
-        emptyDescription="No confirmed sales were recorded for the selected period."
-        isEmpty={(d) => d.data.length === 0}
+        emptyDescription="No confirmed sales matched the selected filters."
+      />
+      {data && (
+        <ReportPagination
+          page={data.page}
+          limit={data.limit}
+          total={data.total}
+          onPageChange={setPage}
+        />
+      )}
+      <Modal
+        open={selectedItem !== null}
+        title={selectedItem ? `Sales history · ${selectedItem.name}` : 'Sales history'}
+        size="lg"
+        onClose={() => setSelectedItem(null)}
       >
-        {(d) => <DataTable columns={columns} rows={d.data} rowKey={(row) => row.itemId} />}
-      </ReportSection>
+        {selectedItem && (
+          <>
+            <DataTable
+              columns={[
+                { header: 'Date', cell: (row) => formatDate(String(row.date)) },
+                {
+                  header: 'Invoice',
+                  cell: (row) => (
+                    <button
+                      type="button"
+                      className="font-medium text-accent hover:underline"
+                      onClick={() => navigate(`/sales?invoiceId=${encodeURIComponent(String(row.id))}`)}
+                    >{row.reference}</button>
+                  ),
+                },
+                { header: 'Customer', cell: (row) => row.customer || '—' },
+                { header: 'Quantity', align: 'right', cell: (row) => formatNumber(row.quantity, 2) },
+                { header: 'Unit Price', align: 'right', cell: (row) => formatCurrency(row.unitPrice) },
+                { header: 'Discount', align: 'right', cell: (row) => formatCurrency(row.discount) },
+                { header: 'Tax', align: 'right', cell: (row) => formatCurrency(row.tax) },
+                { header: 'Amount', align: 'right', cell: (row) => formatCurrency(row.amount) },
+              ]}
+              rows={history.data?.data ?? []}
+              rowKey={(row) => String(row.id)}
+              loading={history.loading}
+              error={history.error}
+              onRetry={history.reload}
+              emptyTitle="No item sales"
+              emptyDescription="No sales transactions matched this item and date range."
+            />
+            {history.data && (
+              <ReportPagination
+                page={history.data.page}
+                limit={history.data.limit}
+                total={history.data.total}
+                onPageChange={setHistoryPage}
+              />
+            )}
+          </>
+        )}
+      </Modal>
     </Card>
   )
 }
@@ -1049,118 +1637,6 @@ function InventoryMovementsTab({ range }: { range: string }) {
   )
 }
 
-function ReceivablesTab() {
-  const columns: Column<LedgerRow>[] = [
-    {
-      header: 'Code',
-      cell: (row) => (
-        <span className="font-mono text-xs text-ink-3">{row.customerCode ?? '—'}</span>
-      ),
-    },
-    {
-      header: 'Customer',
-      cell: (row) => <span className="font-medium text-ink">{row.name}</span>,
-    },
-    { header: 'Phone', cell: (row) => row.phone ?? '—' },
-    {
-      header: 'Invoices',
-      align: 'right',
-      cell: (row) => formatNumber(row.invoiceCount),
-    },
-    {
-      header: 'Outstanding',
-      align: 'right',
-      cell: (row) => (
-        <span className="font-semibold text-brand-crimson">{formatCurrency(row.outstanding)}</span>
-      ),
-    },
-  ]
-
-  return (
-    <ReportSection<LedgerData>
-      url="/reports/receivables"
-      emptyTitle="No receivables"
-      emptyDescription="Every customer invoice has been fully settled."
-      isEmpty={(d) => d.data.length === 0}
-    >
-      {(data) => (
-        <Card>
-          <CardHeader
-            title="Receivables"
-            subtitle="Outstanding balances owed by customers"
-            action={
-              <span className="text-sm font-semibold text-ink">
-                {formatCurrency(data.total)}
-              </span>
-            }
-          />
-          <DataTable
-            columns={columns}
-            rows={data.data}
-            rowKey={(row) => row.customerId ?? row.name}
-          />
-        </Card>
-      )}
-    </ReportSection>
-  )
-}
-
-function PayablesTab() {
-  const columns: Column<LedgerRow>[] = [
-    {
-      header: 'Code',
-      cell: (row) => (
-        <span className="font-mono text-xs text-ink-3">{row.supplierCode ?? '—'}</span>
-      ),
-    },
-    {
-      header: 'Supplier',
-      cell: (row) => <span className="font-medium text-ink">{row.name}</span>,
-    },
-    { header: 'Phone', cell: (row) => row.phone ?? '—' },
-    {
-      header: 'Invoices',
-      align: 'right',
-      cell: (row) => formatNumber(row.invoiceCount),
-    },
-    {
-      header: 'Outstanding',
-      align: 'right',
-      cell: (row) => (
-        <span className="font-semibold text-brand-amber">{formatCurrency(row.outstanding)}</span>
-      ),
-    },
-  ]
-
-  return (
-    <ReportSection<LedgerData>
-      url="/reports/payables"
-      emptyTitle="No payables"
-      emptyDescription="Every supplier invoice has been fully settled."
-      isEmpty={(d) => d.data.length === 0}
-    >
-      {(data) => (
-        <Card>
-          <CardHeader
-            title="Payables"
-            subtitle="Outstanding balances owed to suppliers"
-            action={
-              <span className="text-sm font-semibold text-ink">
-                {formatCurrency(data.total)}
-              </span>
-            }
-          />
-          <DataTable
-            columns={columns}
-            rows={data.data}
-            rowKey={(row) => row.supplierId ?? row.name}
-          />
-        </Card>
-      )}
-    </ReportSection>
-  )
-}
-
 function DayBookSection<T>({
   title,
   subtitle,
@@ -1327,24 +1803,570 @@ function DayBookTab({ date }: { date: string }) {
   )
 }
 
+function getVisibleReportTable(container: HTMLDivElement | null) {
+  const table = container?.querySelector('table')
+  if (table) {
+    const columns = Array.from(table.querySelectorAll('thead th')).map((cell) =>
+      (cell.textContent ?? '').trim(),
+    )
+    const rows = Array.from(table.querySelectorAll('tbody tr')).map((row) =>
+      Array.from(row.querySelectorAll('td')).map((cell) =>
+        (cell.textContent ?? '').replace(/\s+/g, ' ').trim(),
+      ),
+    )
+    if (columns.length) return { columns, rows, html: table.outerHTML }
+  }
+  const details = container?.innerText.trim()
+  if (!details) return null
+  const escapeHtml = (value: string) =>
+    value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  const rows = details.split(/\r?\n/).map((line) => [line.trim()]).filter(([line]) => line)
+  const htmlRows = rows.map(([line]) => `<tr><td>${escapeHtml(line)}</td></tr>`).join('')
+  return {
+    columns: ['Report details'],
+    rows,
+    html: `<table><thead><tr><th>Report details</th></tr></thead><tbody>${htmlRows}</tbody></table>`,
+  }
+}
+
+function downloadReportCsv(
+  title: string,
+  dateRange: string,
+  report: ReturnType<typeof getVisibleReportTable>,
+) {
+  if (!report) {
+    window.alert('There is no report table to export yet.')
+    return
+  }
+  const escapeCell = (value: string) => {
+    const safeValue = /^[\t\r ]*[=+\-@]/.test(value) ? `'${value}` : value
+    return `"${safeValue.replaceAll('"', '""')}"`
+  }
+  const contents = [
+    ['Company', 'Pyloom POS'],
+    ['Report', title],
+    ...(dateRange ? [['Date range', dateRange]] : []),
+    ['Generated', new Date().toLocaleString()],
+    [],
+    report.columns,
+    ...report.rows,
+  ]
+    .map((row) => row.map(escapeCell).join(','))
+    .join('\r\n')
+  const blob = new Blob(['\uFEFF', contents], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.csv`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+interface WorkspaceReportResponse {
+  data: Record<string, unknown>[]
+  total: number
+  page: number
+  limit: number
+  summary?: Record<string, unknown>
+}
+
+interface WorkspaceOptionResponse {
+  data: { id: number; label: string }[]
+}
+
+function workspaceFilter(report: TabKey): { optionType: string; param: string; label: string } | null {
+  if (['general-ledger', 'trial-balance', 'profit-loss', 'expense-report'].includes(report)) {
+    return { optionType: 'accounts', param: 'accountId', label: 'Account' }
+  }
+  if (['sales-item-history', 'purchase-item-history', 'stock-ledger', 'stock-balance', 'stock-valuation', 'stock-movements', 'stock-ageing', 'item-profitability', 'purchase-by-item'].includes(report)) {
+    return { optionType: 'items', param: 'itemId', label: 'Item' }
+  }
+  if (['cash-book', 'bank-book'].includes(report)) {
+    return { optionType: 'accounts', param: 'accountId', label: 'Account' }
+  }
+  if (['customer-ledger', 'sales-by-customer', 'receivables'].includes(report)) {
+    return { optionType: 'customers', param: 'partyId', label: 'Customer' }
+  }
+  if (['supplier-ledger', 'purchase-register', 'purchase-by-supplier', 'purchase-return-register', 'payables'].includes(report)) {
+    return { optionType: 'suppliers', param: 'partyId', label: 'Supplier' }
+  }
+  if (['warehouse-stock', 'stock-balance', 'stock-valuation', 'stock-ledger', 'stock-movements', 'stock-ageing'].includes(report)) {
+    return { optionType: 'warehouses', param: 'warehouseId', label: 'Warehouse' }
+  }
+  if (['discount-report', 'sales-by-cashier'].includes(report)) {
+    return { optionType: 'cashiers', param: 'cashierId', label: 'Cashier' }
+  }
+  return null
+}
+
+function isMoneyColumn(key: string) {
+  if (/count|items|invoices|quantity|days/i.test(key)) return false
+  return /amount|revenue|discount|tax|paid|outstanding|debit|credit|balance|cost|profit|subtotal|collected|vat|cogs|total|price|assets|liabilities|equity|earnings/i.test(key)
+}
+
+function formatWorkspaceValue(key: string, value: unknown): ReactNode {
+  if (value == null || value === '') return '—'
+  if (key === 'date' || key.endsWith('Date')) return formatDate(String(value))
+  if (key === 'status') {
+    const status = String(value)
+    return <Badge tone={STATUS_TONES[status] ?? 'slate'}>{status.replaceAll('_', ' ')}</Badge>
+  }
+  if (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)))) {
+    return isMoneyColumn(key)
+      ? formatCurrency(toNumber(value as Money))
+      : formatNumber(toNumber(value as Money))
+  }
+  return String(value)
+}
+
+function WorkspaceReportTab({
+  report,
+  range,
+  onQueryChange,
+  refreshKey,
+}: {
+  report: TabKey
+  range: string
+  onQueryChange: (query: string) => void
+  refreshKey: number
+}) {
+  const navigate = useNavigate()
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(25)
+  const [filterValue, setFilterValue] = useState('')
+  const [warehouseValue, setWarehouseValue] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('')
+  const [sortKey, setSortKey] = useState('')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const filter = useMemo(() => workspaceFilter(report), [report])
+  const needsSelection = [
+    'general-ledger', 'sales-item-history', 'purchase-item-history', 'stock-ledger',
+    'customer-ledger', 'supplier-ledger',
+  ].includes(report)
+  const canLoad = !needsSelection || Boolean(filterValue)
+  const options = useFetch<WorkspaceOptionResponse>(
+    `/reports/workspace-options/${filter?.optionType ?? 'items'}`,
+  )
+  const warehouseOptions = useFetch<WorkspaceOptionResponse>('/reports/workspace-options/warehouses')
+  const params = useMemo(() => {
+    const query = new URLSearchParams(range)
+    query.set('page', String(page))
+    query.set('limit', String(limit))
+    query.set('refresh', String(refreshKey))
+    if (search.trim()) query.set('search', search.trim())
+    if (filter && filterValue) query.set(filter.param, filterValue)
+    if (warehouseValue) query.set('warehouseId', warehouseValue)
+    if (paymentMethod) query.set('paymentMethod', paymentMethod)
+    return query.toString()
+  }, [filter, filterValue, limit, page, paymentMethod, range, refreshKey, search, warehouseValue])
+  useEffect(() => onQueryChange(params), [onQueryChange, params])
+  const { data, loading, error, reload } = useFetch<WorkspaceReportResponse>(
+    `/reports/workspace/${report}?${params}`,
+    canLoad,
+  )
+  const records = data?.data ?? []
+  const keys = useMemo(() => {
+    const first = records[0]
+    return first
+      ? Object.keys(first).filter((key) =>
+          !['id', 'sortname', 'referenceType', 'referenceId'].includes(key),
+        )
+      : []
+  }, [records])
+  const columns = useMemo<Column<Record<string, unknown>>[]>(() =>
+    keys.map((key) => ({
+      header: key === 'date' ? 'Date' : key.replace(/([A-Z])/g, ' $1').replace(/^./, (letter) => letter.toUpperCase()),
+      align: isMoneyColumn(key) || /quantity|count|days/i.test(key) ? 'right' : 'left',
+      className: 'whitespace-nowrap',
+      sortKey: key,
+      cell: (row) => {
+        const value = row[key]
+        if (key === 'reference' && typeof value === 'string' &&
+          ['sales-item-history', 'sales-vat-register', 'purchase-item-history', 'purchase-register', 'purchase-vat-register'].includes(report)) {
+          return (
+            <button
+              type="button"
+              className="font-medium text-accent hover:underline"
+              onClick={() => navigate(
+                ['purchase-item-history', 'purchase-register', 'purchase-vat-register'].includes(report)
+                  ? `/purchases?invoiceId=${encodeURIComponent(String(row.id))}`
+                  : `/sales?invoiceId=${encodeURIComponent(String(row.id))}`,
+              )}
+            >
+              {value}
+            </button>
+          )
+        }
+        if (['reference', 'voucherNumber'].includes(key) && typeof value === 'string' &&
+          ['general-ledger', 'day-book'].includes(report) && row.referenceId) {
+          const target = row.referenceType === 'sales_invoice'
+            ? `/sales?invoiceId=${encodeURIComponent(String(row.referenceId))}`
+            : row.referenceType === 'purchase_invoice'
+              ? `/purchases?invoiceId=${encodeURIComponent(String(row.referenceId))}`
+              : null
+          if (target) {
+            return (
+              <button
+                type="button"
+                className="font-medium text-accent hover:underline"
+                onClick={() => navigate(target)}
+              >
+                {value}
+              </button>
+            )
+          }
+        }
+        return formatWorkspaceValue(key, value)
+      },
+    })), [keys, navigate, report])
+  const sortedRecords = useMemo(() => {
+    if (!sortKey) return records
+    return [...records].sort((a, b) => {
+      const left = a[sortKey]
+      const right = b[sortKey]
+      let comparison = 0
+      if (typeof left === 'number' && typeof right === 'number') comparison = left - right
+      else comparison = String(left ?? '').localeCompare(String(right ?? ''), undefined, { numeric: true })
+      return sortDirection === 'asc' ? comparison : -comparison
+    })
+  }, [records, sortDirection, sortKey])
+  const metrics = Object.entries(data?.summary ?? {}).filter(
+    ([, value]) => typeof value === 'number' && Number.isFinite(value),
+  )
+  function changeSort(key: string) {
+    if (sortKey === key) setSortDirection((direction) => direction === 'asc' ? 'desc' : 'asc')
+    else {
+      setSortKey(key)
+      setSortDirection('asc')
+    }
+  }
+  return (
+    <Card>
+      <div className="flex flex-wrap items-end gap-3 border-b border-line-2 px-4 py-4 sm:px-5">
+        <Field label="Search report" className="min-w-[220px] flex-1">
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setPage(1)
+            }}
+            placeholder="Search names, codes, references…"
+          />
+        </Field>
+        {filter && (
+          <Field label={filter.label} className="w-full sm:w-64">
+            <Select
+              value={filterValue}
+              onChange={(event) => {
+                setFilterValue(event.target.value)
+                setPage(1)
+              }}
+            >
+              <option value="">
+                {needsSelection ? `Select ${filter.label.toLowerCase()}…` : `All ${filter.label.toLowerCase()}s`}
+              </option>
+              {(options.data?.data ?? []).map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {options.error && <span className="pb-2 text-xs text-brand-crimson">{options.error}</span>}
+        {['warehouse-stock', 'stock-balance', 'stock-valuation', 'stock-movements', 'stock-ageing', 'stock-ledger'].includes(report) && (
+            <Field label="Warehouse" className="w-full sm:w-56">
+              <Select value={warehouseValue} onChange={(event) => setWarehouseValue(event.target.value)}>
+                <option value="">All warehouses</option>
+                {(warehouseOptions.data?.data ?? []).map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </Select>
+            </Field>
+          )}
+        {warehouseOptions.error && ['warehouse-stock', 'stock-balance', 'stock-valuation', 'stock-movements', 'stock-ageing', 'stock-ledger'].includes(report) &&
+          <span className="pb-2 text-xs text-brand-crimson">{warehouseOptions.error}</span>}
+        {report === 'payment-collection' && (
+          <Field label="Payment method" className="w-full sm:w-48">
+            <Select value={paymentMethod} onChange={(event) => {
+              setPaymentMethod(event.target.value)
+              setPage(1)
+            }}>
+              <option value="">All methods</option>
+              <option value="cash">Cash</option>
+              <option value="bank_transfer">Bank transfer</option>
+              <option value="card">Card</option>
+              <option value="digital_wallet">Digital wallet</option>
+              <option value="qr">QR</option>
+              <option value="customer_credit">Customer credit</option>
+              <option value="split">Split</option>
+            </Select>
+          </Field>
+        )}
+        <Field label="Rows per page" className="w-28">
+          <Select value={limit} onChange={(event) => {
+            setLimit(Number(event.target.value))
+            setPage(1)
+          }}>
+            {[25, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+          </Select>
+        </Field>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setSearch('')
+            setFilterValue('')
+            setWarehouseValue('')
+            setPaymentMethod('')
+            setPage(1)
+          }}
+        >
+          Clear
+        </Button>
+        {canLoad && <span className="pb-2 text-xs text-ink-3">{formatNumber(data?.total ?? 0)} records</span>}
+      </div>
+      {metrics.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 px-4 pt-4 sm:grid-cols-4 sm:px-5">
+          {metrics.map(([key, value]) => (
+            <ReportMetric
+              key={key}
+              label={key.replace(/([A-Z])/g, ' $1').replace(/^./, (letter) => letter.toUpperCase())}
+              value={isMoneyColumn(key)
+                ? formatCurrency(toNumber(value as Money))
+                : formatNumber(toNumber(value as Money))}
+            />
+          ))}
+        </div>
+      )}
+      {!canLoad ? (
+        <EmptyState
+          title={`Select ${filter?.label.toLowerCase() ?? 'a filter'}`}
+          description="Choose a record above to load this report."
+        />
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={sortedRecords}
+          rowKey={(row) => String(row.id ?? JSON.stringify(row))}
+          loading={loading}
+          error={error}
+          onRetry={reload}
+          sortKey={sortKey}
+          sortDirection={sortDirection}
+          onSort={changeSort}
+          emptyTitle="No report data found"
+          emptyDescription="Try a different date range or clear the selected filters."
+        />
+      )}
+      {canLoad && data && (
+        <ReportPagination
+          page={data.page}
+          limit={data.limit}
+          total={data.total}
+          onPageChange={setPage}
+        />
+      )}
+    </Card>
+  )
+}
+
+function workspaceExportTable(records: Record<string, unknown>[]) {
+  if (!records.length) return null
+  const keys = Object.keys(records[0]).filter((key) =>
+    !['id', 'sortname', 'referenceType', 'referenceId'].includes(key),
+  )
+  const columns = keys.map((key) =>
+    key === 'date' ? 'Date' : key.replace(/([A-Z])/g, ' $1').replace(/^./, (letter) => letter.toUpperCase()),
+  )
+  const rows = records.map((record) => keys.map((key) => {
+    const value = record[key]
+    if (value == null || value === '') return ''
+    if (key === 'date' || key.endsWith('Date')) return formatDate(String(value))
+    if (key === 'status') return String(value).replaceAll('_', ' ')
+    if (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)))) {
+      return isMoneyColumn(key)
+        ? formatCurrency(toNumber(value as Money))
+        : formatNumber(toNumber(value as Money))
+    }
+    return String(value)
+  }))
+  const escapeHtml = (value: string) =>
+    value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  const header = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('')
+  const body = rows.map((row) =>
+    `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`,
+  ).join('')
+  return {
+    columns,
+    rows,
+    html: `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`,
+  }
+}
+
+function ReportActions({
+  title,
+  dateRange,
+  tableRef,
+  onRefresh,
+  loadExport,
+}: {
+  title: string
+  dateRange: string
+  tableRef: RefObject<HTMLDivElement | null>
+  onRefresh: () => void
+  loadExport?: () => Promise<ReturnType<typeof getVisibleReportTable>>
+}) {
+  async function getExportData() {
+    if (loadExport) return loadExport()
+    return getVisibleReportTable(tableRef.current)
+  }
+
+  async function exportExcel() {
+    const report = await getExportData()
+    if (!report) {
+      window.alert('There is no report table to export yet.')
+      return
+    }
+    try {
+      const { data } = await api.post<Blob>(
+        '/reports/export/xlsx',
+        { title, dateRange, columns: report.columns, rows: report.rows },
+        { responseType: 'blob' },
+      )
+      const url = URL.createObjectURL(data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.xlsx`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Excel export failed.'
+      window.alert(message)
+    }
+  }
+
+  function printReport() {
+    void getExportData().then((report) => {
+      if (!report) {
+        window.alert('There is no report table to print yet.')
+        return
+      }
+      openPrintWindow(
+        title,
+        `<h1>${title}</h1><p class="muted">Pyloom POS${dateRange ? ` · ${dateRange}` : ''} · Generated ${new Date().toLocaleString()}</p>${report.html}`,
+      )
+    }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Print preparation failed.'
+      window.alert(message)
+    })
+  }
+
+  async function exportCsv() {
+    try {
+      downloadReportCsv(title, dateRange, await getExportData())
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'CSV export failed.'
+      window.alert(message)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        title="Export Excel"
+        aria-label="Export Excel"
+        onClick={() => void exportExcel()}
+        className="rounded-md p-2 text-ink-2 transition hover:bg-blue-50 hover:text-accent"
+      >
+        <FileSpreadsheet size={16} />
+      </button>
+      <button
+        type="button"
+        title="Export CSV"
+        aria-label="Export CSV"
+        onClick={() => void exportCsv()}
+        className="rounded-md p-2 text-ink-2 transition hover:bg-blue-50 hover:text-accent"
+      >
+        <Download size={16} />
+      </button>
+      <button
+        type="button"
+        title="Print or save as PDF"
+        aria-label="Print or save as PDF"
+        onClick={printReport}
+        className="rounded-md p-2 text-ink-2 transition hover:bg-blue-50 hover:text-accent"
+      >
+        <Printer size={16} />
+      </button>
+      <button
+        type="button"
+        title="Refresh report"
+        aria-label="Refresh report"
+        onClick={onRefresh}
+        className="rounded-md p-2 text-ink-2 transition hover:bg-blue-50 hover:text-accent"
+      >
+        <RefreshCw size={16} />
+      </button>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------
 
-export function ReportsPage() {
+export function ReportsPage({ accountingOnly = false }: { accountingOnly?: boolean }) {
+  const visibleReportGroups = accountingOnly
+    ? REPORT_GROUPS.filter((group) => group.label === 'Finance')
+    : REPORT_GROUPS.filter((group) => group.label !== 'Finance')
   const now = new Date()
   const defaultFrom = toISODate(new Date(now.getFullYear(), now.getMonth(), 1))
   const defaultTo = toISODate(now)
 
-  const [tab, setTab] = useState<TabKey>('summary')
+  const [tab, setTab] = useState<TabKey>(accountingOnly ? 'profit-loss' : 'summary')
   const [from, setFrom] = useState(defaultFrom)
   const [to, setTo] = useState(defaultTo)
   const [applied, setApplied] = useState({ from: defaultFrom, to: defaultTo })
   const [day, setDay] = useState(defaultTo)
   const [appliedDay, setAppliedDay] = useState(defaultTo)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [workspaceQuery, setWorkspaceQuery] = useState('')
+  const [expandedGroups, setExpandedGroups] = useState(() => visibleReportGroups.map((group) => group.label))
+  const reportContentRef = useRef<HTMLDivElement>(null)
 
-  const range = `from=${applied.from}&to=${applied.to}`
-  const usesDateRange = !['stock', 'low-stock', 'receivables', 'payables'].includes(tab)
+  const range = `from=${encodeURIComponent(applied.from)}&to=${encodeURIComponent(applied.to)}`
+  const usesDateRange = ![
+    'stock', 'stock-valuation', 'low-stock', 'receivables', 'payables',
+    'stock-ageing', 'stock-balance', 'warehouse-stock',
+  ].includes(tab)
+  const activeGroup = visibleReportGroups.find((group) => group.items.some((item) => item.key === tab))
+  const activeReport = activeGroup?.items.find((item) => item.key === tab)
+  const exportDateRange = tab === 'daybook'
+    ? formatDate(appliedDay)
+    : usesDateRange ? periodLabel(applied.from, applied.to) : ''
+
+  async function loadWorkspaceExport() {
+    if (!WORKSPACE_TABS.includes(tab)) return null
+    const query = new URLSearchParams(workspaceQuery)
+    query.set('limit', '100')
+    let page = 1
+    let total = 0
+    const records: Record<string, unknown>[] = []
+    do {
+      query.set('page', String(page))
+      const response = await api.get<WorkspaceReportResponse>(
+        `/reports/workspace/${tab}?${query.toString()}`,
+      )
+      total = response.data.total
+      if (total > 50_000) {
+        throw new Error('This export exceeds 50,000 rows. Narrow the report filters and try again.')
+      }
+      records.push(...response.data.data)
+      page += 1
+    } while (records.length < total)
+    return workspaceExportTable(records)
+  }
 
   function clearFilters() {
     setFrom(defaultFrom)
@@ -1352,101 +2374,189 @@ export function ReportsPage() {
     setApplied({ from: defaultFrom, to: defaultTo })
   }
 
+  function applyPreset(preset: 'today' | 'yesterday' | 'week' | 'month') {
+    const dates = preset === 'yesterday'
+      ? (() => {
+          const yesterday = new Date()
+          yesterday.setDate(yesterday.getDate() - 1)
+          const date = toISODate(yesterday)
+          return { from: date, to: date }
+        })()
+      : presetRange(preset)
+    setFrom(dates.from)
+    setTo(dates.to)
+    setApplied(dates)
+  }
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[236px_minmax(0,1fr)]">
+    <div className="report-workspace grid min-w-0 gap-4 xl:grid-cols-[248px_minmax(0,1fr)]">
       <nav
         aria-label="Report sections"
-        className="surface space-y-2 rounded-xl p-2 lg:sticky lg:top-4 lg:self-start"
+        className="surface max-h-[34vh] overflow-y-auto rounded-xl p-2 xl:sticky xl:top-4 xl:max-h-[calc(100vh-7rem)] xl:self-start"
       >
-        {REPORT_GROUPS.map((group) => (
-          <div key={group.label}>
-            <p className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
-              {group.label}
-            </p>
-            <div className="space-y-0.5">
-              {group.items.map((item) => {
-                const active = tab === item.key
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    aria-current={active ? 'page' : undefined}
-                    onClick={() => setTab(item.key)}
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors',
-                      active
-                        ? 'bg-accent text-white shadow-sm'
-                        : 'text-ink-2 hover:bg-line-2 hover:text-ink',
-                    )}
-                  >
-                    {item.icon}
-                    <span className="truncate">{item.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        ))}
+        <div className="mb-1 flex items-center justify-between px-2.5 py-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink">Reports</span>
+          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+            {formatNumber(visibleReportGroups.reduce((count, group) => count + group.items.length, 0))}
+          </span>
+        </div>
+        {visibleReportGroups.map((group) => {
+          const expanded = expandedGroups.includes(group.label)
+          return (
+            <section key={group.label} className="border-t border-line-2 py-1">
+              <button
+                type="button"
+                aria-expanded={expanded}
+                onClick={() => setExpandedGroups((current) =>
+                  expanded
+                    ? current.filter((label) => label !== group.label)
+                    : [...current, group.label],
+                )}
+                className="flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3 hover:bg-blue-50/70"
+              >
+                {group.label}
+                <ChevronDown size={14} className={cn('transition-transform', expanded && 'rotate-180')} />
+              </button>
+              {expanded && (
+                <div className="space-y-0.5 pb-1">
+                  {group.items.map((item) => {
+                    const active = tab === item.key
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        aria-current={active ? 'page' : undefined}
+                        onClick={() => {
+                          setWorkspaceQuery('')
+                          setTab(item.key)
+                        }}
+                        className={cn(
+                          'flex min-h-9 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] font-medium transition-colors',
+                          active
+                            ? 'bg-blue-50 text-blue-700 shadow-[inset_2px_0_0_#0b6aba]'
+                            : 'text-ink-2 hover:bg-line-2 hover:text-ink',
+                        )}
+                      >
+                        <span className={cn('shrink-0', active ? 'text-accent' : 'text-ink-3')}>
+                          {item.icon}
+                        </span>
+                        <span className="truncate">{item.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+          )
+        })}
       </nav>
 
       <div className="min-w-0 space-y-4">
-      {usesDateRange && (
-        <Card className="p-4">
-          <div className="flex flex-wrap items-end gap-3">
-            {tab === 'daybook' ? (
-              <>
-                <Field label="Date" className="w-48">
-                  <Input type="date" value={day} onChange={(event) => setDay(event.target.value)} />
-                </Field>
-                <Button onClick={() => setAppliedDay(day)}>Apply</Button>
-                <Button variant="outline" onClick={() => setAppliedDay(defaultTo)}>
-                  Today
-                </Button>
-              </>
-            ) : (
-              <>
-                <Field label="From" className="w-48">
-                  <Input
-                    type="date"
-                    value={from}
-                    max={to || undefined}
-                    onChange={(event) => setFrom(event.target.value)}
-                  />
-                </Field>
-                <Field label="To" className="w-48">
-                  <Input
-                    type="date"
-                    value={to}
-                    min={from || undefined}
-                    onChange={(event) => setTo(event.target.value)}
-                  />
-                </Field>
-                <Button onClick={() => setApplied({ from: from || defaultFrom, to: to || defaultTo })}>
-                  Apply
-                </Button>
-                <Button variant="outline" onClick={clearFilters}>
-                  Clear
-                </Button>
-              </>
-            )}
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-5">
+            <div className="min-w-0">
+              <div className="mb-1 flex items-center gap-1.5 text-xs text-ink-3">
+                <span>Reports</span>
+                <span aria-hidden="true">/</span>
+                <span>{activeGroup?.label}</span>
+              </div>
+              <h1 className="text-xl font-semibold tracking-tight text-ink">
+                {activeReport?.label ?? 'Reports'}
+              </h1>
+              <p className="mt-1 max-w-2xl text-sm text-ink-3">
+                {REPORT_DESCRIPTIONS[tab]}
+              </p>
+            </div>
+            <ReportActions
+              title={activeReport?.label ?? 'Report'}
+              dateRange={exportDateRange}
+              tableRef={reportContentRef}
+              onRefresh={() => setRefreshKey((key) => key + 1)}
+              loadExport={WORKSPACE_TABS.includes(tab) ? loadWorkspaceExport : undefined}
+            />
           </div>
+          {usesDateRange && (
+            <div className="border-t border-line-2 bg-blue-50/35 px-4 py-3 sm:px-5">
+              <div className="flex flex-wrap items-end gap-3">
+                {tab === 'daybook' ? (
+                  <>
+                    <Field label="Date" className="w-full sm:w-44">
+                      <Input type="date" value={day} onChange={(event) => setDay(event.target.value)} />
+                    </Field>
+                    <Button onClick={() => setAppliedDay(day)}>Apply</Button>
+                    <Button variant="outline" onClick={() => {
+                      setDay(defaultTo)
+                      setAppliedDay(defaultTo)
+                    }}>Today</Button>
+                  </>
+                ) : (
+                  <>
+                    <Field label="From date" className="w-full sm:w-44">
+                      <Input
+                        type="date"
+                        value={from}
+                        max={to || undefined}
+                        onChange={(event) => setFrom(event.target.value)}
+                      />
+                    </Field>
+                    <Field label="To date" className="w-full sm:w-44">
+                      <Input
+                        type="date"
+                        value={to}
+                        min={from || undefined}
+                        onChange={(event) => setTo(event.target.value)}
+                      />
+                    </Field>
+                    <DateRangePresets
+                      from={from}
+                      to={to}
+                      onPick={(dates) => {
+                        setFrom(dates.from)
+                        setTo(dates.to)
+                        setApplied(dates)
+                      }}
+                      className="mb-0.5"
+                    />
+                    <Button onClick={() => setApplied({ from: from || defaultFrom, to: to || defaultTo })}>
+                      Apply
+                    </Button>
+                    <Button variant="outline" onClick={clearFilters}>Clear</Button>
+                    <div className="ml-auto flex gap-1">
+                      <button type="button" className="rounded-md px-2 py-1.5 text-xs text-ink-3 hover:bg-white hover:text-accent" onClick={() => applyPreset('yesterday')}>Yesterday</button>
+                      <button type="button" className="rounded-md px-2 py-1.5 text-xs text-ink-3 hover:bg-white hover:text-accent" onClick={() => applyPreset('today')}>Today</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </Card>
-      )}
 
-      {tab === 'summary' && <SalesSummaryTab range={range} />}
-      {tab === 'by-item' && <SalesByItemTab range={range} />}
-      {tab === 'by-category' && <SalesByCategoryTab range={range} />}
-      {tab === 'by-customer' && <SalesByCustomerTab range={range} />}
-      {tab === 'by-cashier' && <SalesByCashierTab range={range} />}
-      {tab === 'purchases' && <PurchaseSummaryTab range={range} />}
-      {tab === 'pl' && <ProfitLossTab range={range} />}
-      {tab === 'vat' && <VatReportTab range={range} />}
-      {tab === 'stock' && <StockValuationTab />}
-      {tab === 'low-stock' && <LowStockTab />}
-      {tab === 'movements' && <InventoryMovementsTab range={range} />}
-      {tab === 'receivables' && <ReceivablesTab />}
-      {tab === 'payables' && <PayablesTab />}
-      {tab === 'daybook' && <DayBookTab date={appliedDay} />}
+        <div ref={reportContentRef} className="min-w-0 space-y-4">
+          {tab === 'summary' && <SalesSummaryTab key={refreshKey} range={range} />}
+          {tab === 'sales-register' && <SalesRegisterTab key={refreshKey} range={range} />}
+          {tab === 'by-item' && <SalesByItemTab key={refreshKey} range={range} />}
+          {tab === 'by-category' && <SalesByCategoryTab key={refreshKey} range={range} />}
+          {tab === 'by-customer' && <SalesByCustomerTab key={refreshKey} range={range} />}
+          {tab === 'by-cashier' && <SalesByCashierTab key={refreshKey} range={range} />}
+          {tab === 'sales-returns' && <SalesReturnRegisterTab key={refreshKey} range={range} />}
+          {tab === 'purchases' && <PurchaseSummaryTab key={refreshKey} range={range} />}
+          {tab === 'pl' && <ProfitLossTab key={refreshKey} range={range} />}
+          {tab === 'vat' && <VatReportTab key={refreshKey} range={range} />}
+          {tab === 'stock' && <StockValuationTab key={refreshKey} />}
+          {tab === 'low-stock' && <LowStockTab key={refreshKey} />}
+          {tab === 'movements' && <InventoryMovementsTab key={refreshKey} range={range} />}
+          {tab === 'daybook' && <DayBookTab key={refreshKey} date={appliedDay} />}
+          {WORKSPACE_TABS.includes(tab) && (
+            <WorkspaceReportTab
+              key={tab}
+              report={tab}
+              range={range}
+              onQueryChange={setWorkspaceQuery}
+              refreshKey={refreshKey}
+            />
+          )}
+        </div>
       </div>
     </div>
   )

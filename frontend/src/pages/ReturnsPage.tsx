@@ -165,7 +165,10 @@ function QtyInput({
 }
 
 export function ReturnsPage() {
-  const [tab, setTab] = useState<'sales' | 'purchases'>('sales')
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState<'sales' | 'purchases'>(
+    searchParams.get('tab') === 'purchases' ? 'purchases' : 'sales',
+  )
 
   return (
     <div className="space-y-4">
@@ -796,6 +799,8 @@ function PurchaseReturnsTab() {
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const deepLinkRef = useRef<string | null>(null)
 
   function openCreate() {
     setCreateOpen(true)
@@ -822,6 +827,18 @@ function PurchaseReturnsTab() {
       setInvoiceLoading(false)
     }
   }
+
+  useEffect(() => {
+    const linkedInvoiceId = searchParams.get('purchaseInvoiceId')
+    if (!linkedInvoiceId || deepLinkRef.current === linkedInvoiceId) return
+    deepLinkRef.current = linkedInvoiceId
+    setCreateOpen(true)
+    void loadInvoice(linkedInvoiceId)
+    const next = new URLSearchParams(searchParams)
+    next.delete('purchaseInvoiceId')
+    setSearchParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   async function submitReturn() {
     if (!invoice) {

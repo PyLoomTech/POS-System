@@ -86,6 +86,15 @@ export async function createSalesReturn(req: AuthRequest, res: Response, next: N
     const returnNumber = await getNextNumber('SALES_RETURN');
 
     const result = await prisma.$transaction(async (tx) => {
+      const activeShift = await tx.$queryRaw<Array<{ id: bigint }>>`
+        SELECT id FROM cash_drawer_sessions
+        WHERE cashier_id = ${req.user!.id} AND status = 'open'
+        FOR UPDATE
+      `;
+      if (data.refundMethod === 'cash' && activeShift.length === 0) {
+        throw createError('Open a shift before issuing a cash refund.', 409);
+      }
+
       let subtotal = new Decimal(0);
       let taxTotal = new Decimal(0);
       const lineData = [];
@@ -126,6 +135,7 @@ export async function createSalesReturn(req: AuthRequest, res: Response, next: N
         data: {
           returnNumber,
           originalInvoiceId: invoice.id,
+          cashDrawerSessionId: activeShift[0]?.id ?? null,
           returnDate: new Date(data.returnDate),
           customerId: invoice.customerId,
           returnReason: data.returnReason || null,

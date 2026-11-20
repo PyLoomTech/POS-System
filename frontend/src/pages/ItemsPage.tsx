@@ -716,7 +716,7 @@ export function ItemsPage() {
               ) : (
                 <div className="space-y-2">
                   {priceRows.map((row) => (
-                    <div key={row.key} className="grid grid-cols-[minmax(0,1fr)_140px_36px] items-end gap-2">
+                    <div key={row.key} className="grid grid-cols-[minmax(0,1fr)_minmax(110px,140px)_minmax(120px,1fr)_36px] items-end gap-2">
                       <Field label="Price list">
                         <Select
                           value={row.priceListId}

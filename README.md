@@ -93,6 +93,15 @@ row-level report can be downloaded as CSV.
 This feature implements ERPNext-style stock posting semantics in this application; it
 does not connect to or create documents in an ERPNext site.
 
+## Sales Invoice Email
+
+After a POS sale, the system emails the customer an invoice when their customer profile has
+an email address and backend SMTP is configured. Copy the `SMTP_*` settings from
+`backend/.env.example` into the backend's local `.env`, use your mail provider's SMTP
+host/port and credentials, and restart the API. Keep SMTP credentials private and never
+commit them. The checkout receipt shows whether delivery succeeded or why it was skipped;
+cashiers with sales-create permission can retry or resend the invoice from that receipt.
+
 ## Development Phases
 
 | Phase | Description              | Status     |

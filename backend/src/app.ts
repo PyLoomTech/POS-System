@@ -22,6 +22,7 @@ import { accountingRouter } from './modules/accounting/accounting.routes';
 import { reportsRouter } from './modules/reports/reports.routes';
 import { settingsRouter } from './modules/settings/settings.routes';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes';
+import { shiftsRouter } from './modules/shifts/shifts.routes';
 
 // Prisma returns BigInt for large primary keys; teach JSON how to serialize them.
 (BigInt.prototype as any).toJSON = function (this: bigint) {
@@ -84,6 +85,7 @@ app.use(`${API}/accounting`, accountingRouter);
 app.use(`${API}/reports`, reportsRouter);
 app.use(`${API}/settings`, settingsRouter);
 app.use(`${API}/dashboard`, dashboardRouter);
+app.use(`${API}/shifts`, shiftsRouter);
 
 // ─── Health Check ────────────────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -106,7 +108,7 @@ app.use((_req, res) => {
 app.use(errorHandler);
 
 // ─── Start Server ────────────────────────────────────────────
-app.listen(PORT, () => {
+app.listen(Number(PORT), '0.0.0.0', () => {
   console.log('\n╔══════════════════════════════════════════╗');
   console.log('║     Pyloom POS — Backend API Server     ║');
   console.log('║     Powered by Pyloom Technologies      ║');

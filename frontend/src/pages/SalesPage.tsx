@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle,
   Eye,
+  Mail,
   Printer,
   Receipt,
   RotateCcw,
@@ -25,6 +26,7 @@ import {
   formatDate,
   formatDateTime,
   formatNumber,
+  getPriceListDisplayName,
   openPrintWindow,
   toNumber,
 } from '@/lib/utils'
@@ -54,6 +56,8 @@ interface InvoiceLineItem {
   id: string | number
   itemId: number
   quantity: string
+  priceList?: { id: number; name: string } | null
+  unit?: { id: number; name: string; abbreviation: string | null } | null
   unitPrice: string
   discountAmount: string
   taxAmount: string
@@ -88,6 +92,15 @@ interface InvoiceDetail extends InvoiceRow {
   notes: string | null
   createdAt: string
   cashier: { id: number; fullName: string } | null
+  emailNotificationStatus?: 'pending' | 'sent' | 'skipped' | 'not_configured' | 'failed'
+  emailSentAt?: string | null
+  emailNotificationError?: string | null
+  emailNotification?: {
+    status: 'sent' | 'skipped' | 'not_configured' | 'failed'
+    message: string
+    email?: string
+  }
+  customer: { id: number; name: string; phone: string | null; email: string | null } | null
   items: InvoiceLineItem[]
   paymentAllocations?: PaymentAllocationRow[]
 }
@@ -113,12 +126,15 @@ const DEFAULT_FILTERS: Filters = {
 
 export function SalesPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
 
   const [openId, setOpenId] = useState<string | number | null>(null)
   const [detail, setDetail] = useState<InvoiceDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [emailSending, setEmailSending] = useState(false)
+  const [emailActionError, setEmailActionError] = useState<string | null>(null)
 
   const query = useMemo(() => {
     const params = new URLSearchParams()
@@ -160,6 +176,7 @@ export function SalesPage() {
     setOpenId(id)
     setDetail(null)
     setDetailError(null)
+    setEmailActionError(null)
     setDetailLoading(true)
     try {
       const { data: full } = await api.get<InvoiceDetail>(`/sales/${id}`)
@@ -171,10 +188,37 @@ export function SalesPage() {
     }
   }
 
+  async function resendInvoiceEmail() {
+    if (!detail) return
+    setEmailSending(true)
+    setEmailActionError(null)
+    try {
+      const { data: result } = await api.post<Pick<InvoiceDetail,
+        'emailNotificationStatus' | 'emailSentAt' | 'emailNotificationError' | 'emailNotification'
+      >>(`/sales/${detail.id}/email`)
+      setDetail((current) => current ? { ...current, ...result } : null)
+    } catch (err) {
+      setEmailActionError(getErrorMessage(err))
+    } finally {
+      setEmailSending(false)
+    }
+  }
+
+  useEffect(() => {
+    const invoiceId = searchParams.get('invoiceId')
+    if (invoiceId) void openDetail(invoiceId)
+  }, [searchParams])
+
   function closeDetail() {
     setOpenId(null)
     setDetail(null)
     setDetailError(null)
+    setEmailActionError(null)
+    if (searchParams.has('invoiceId')) {
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('invoiceId')
+      setSearchParams(nextParams, { replace: true })
+    }
   }
 
   function goToReturn() {
@@ -189,9 +233,15 @@ export function SalesPage() {
     const storeName = 'Pyloom POS'
     const lines = detail.items
       .map((line) => {
-        const unit = line.item?.unit?.abbreviation ?? line.item?.unit?.name ?? ''
+        const unit =
+          line.unit?.abbreviation ?? line.unit?.name ??
+          line.item?.unit?.abbreviation ?? line.item?.unit?.name ?? ''
+        const displayPriceListName = getPriceListDisplayName(
+          line.priceList?.name,
+          `${line.unit?.name ?? ''} ${line.unit?.abbreviation ?? ''}`,
+        )
         return `<tr>
-          <td>${line.item?.name ?? `Item #${line.itemId}`}${line.item?.itemCode ? ` (${line.item.itemCode})` : ''}</td>
+          <td>${line.item?.name ?? `Item #${line.itemId}`}${displayPriceListName ? ` (${displayPriceListName})` : ''}${line.item?.itemCode ? ` (${line.item.itemCode})` : ''}</td>
           <td class="num">${formatNumber(line.quantity, 2)}${unit ? ` ${unit}` : ''}</td>
           <td class="num">${formatCurrency(line.unitPrice)}</td>
           <td class="num">${formatCurrency(line.taxAmount)}</td>
@@ -568,6 +618,37 @@ export function SalesPage() {
                   <dd>{formatCurrency(detail.outstandingAmount)}</dd>
                 </div>
               </dl>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-3">
+              <div className="flex items-start gap-2 text-sm">
+                <Mail size={16} className="mt-0.5 shrink-0 text-accent-2" />
+                <div>
+                  <p className="font-medium text-ink">
+                    Invoice email · {detail.emailNotification?.status ?? detail.emailNotificationStatus ?? 'unknown'}
+                  </p>
+                  <p className="text-ink-3">
+                    {emailActionError
+                      ?? detail.emailNotification?.message
+                      ?? detail.emailNotificationError
+                      ?? 'No delivery result has been recorded.'}
+                  </p>
+                  {detail.customer?.email && (
+                    <p className="text-xs text-ink-3">Recipient: {detail.customer.email}</p>
+                  )}
+                </div>
+              </div>
+              {detail.status === 'confirmed' && detail.customer?.email && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  loading={emailSending}
+                  icon={<Mail size={14} />}
+                  onClick={() => void resendInvoiceEmail()}
+                >
+                  {detail.emailNotificationStatus === 'sent' ? 'Send again' : 'Retry email'}
+                </Button>
+              )}
             </div>
 
             {detail.paymentAllocations && detail.paymentAllocations.length > 0 && (

@@ -43,7 +43,11 @@ export function DashboardPage() {
     {
       header: 'Qty Sold',
       align: 'right',
-      cell: (row) => <span className="font-medium">{formatNumber(row.quantity)}</span>,
+      cell: (row) => (
+        <span className="font-medium">
+          {formatNumber(row.quantity)} {row.unit}
+        </span>
+      ),
     },
     {
       header: 'Revenue',

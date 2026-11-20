@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import {
   BookOpen,
   BookText,
+  BarChart3,
   CalendarRange,
   Check,
   ChevronDown,
@@ -28,8 +29,9 @@ import { useFetch } from '@/hooks/useFetch'
 import { api, getErrorMessage } from '@/lib/api'
 import { cn, formatCurrency, formatDate, formatNumber, toNumber } from '@/lib/utils'
 import type { Paginated } from '@/types'
+import { ReportsPage } from './ReportsPage'
 
-type TabId = 'accounts' | 'journal' | 'trial-balance' | 'fiscal-periods'
+type TabId = 'accounts' | 'journal' | 'trial-balance' | 'fiscal-periods' | 'reports'
 type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense'
 type BadgeTone = 'green' | 'red' | 'amber' | 'slate' | 'indigo'
 
@@ -38,6 +40,7 @@ const TABS: Array<{ id: TabId; label: string; icon: typeof BookOpen }> = [
   { id: 'journal', label: 'Journal', icon: BookText },
   { id: 'trial-balance', label: 'Trial Balance', icon: Scale },
   { id: 'fiscal-periods', label: 'Fiscal Periods', icon: CalendarRange },
+  { id: 'reports', label: 'Financial Reports', icon: BarChart3 },
 ]
 
 const ACCOUNT_TYPES: AccountType[] = ['asset', 'liability', 'equity', 'revenue', 'expense']
@@ -192,6 +195,7 @@ export function AccountingPage() {
       {tab === 'journal' && <JournalTab />}
       {tab === 'trial-balance' && <TrialBalanceTab />}
       {tab === 'fiscal-periods' && <FiscalPeriodsTab />}
+      {tab === 'reports' && <ReportsPage accountingOnly />}
     </div>
   )
 }

@@ -20,7 +20,7 @@ const paymentSchema = z.object({
   amount: z.number().positive(),
   transactionRef: z.string().optional().nullable(),
   narration: z.string().optional().nullable(),
-  sessionId: z.number().optional().nullable(),
+  sessionId: z.number().int().positive().optional().nullable(),
   allocations: z.array(allocationSchema).default([]),
   idempotencyKey: z.string().optional(),
 });
@@ -98,6 +98,27 @@ export async function createPayment(req: AuthRequest, res: Response, next: NextF
     const paymentNumber = await getNextNumber(seriesCode);
 
     const result = await prisma.$transaction(async (tx) => {
+      let sessionId = data.sessionId ? BigInt(data.sessionId) : null;
+      if (data.sessionId) {
+        const activeShift = await tx.$queryRaw<Array<{ id: bigint }>>`
+          SELECT id FROM cash_drawer_sessions
+          WHERE id = ${BigInt(data.sessionId)}
+            AND cashier_id = ${req.user!.id}
+            AND status = 'open'
+          FOR UPDATE
+        `;
+        if (activeShift.length === 0) {
+          throw createError('Payments can only be assigned to your active shift.', 409);
+        }
+      } else if (data.paymentMethod === 'cash') {
+        const activeShift = await tx.$queryRaw<Array<{ id: bigint }>>`
+          SELECT id FROM cash_drawer_sessions
+          WHERE cashier_id = ${req.user!.id} AND status = 'open'
+          FOR UPDATE
+        `;
+        sessionId = activeShift[0]?.id ?? null;
+      }
+
       const payment = await tx.payment.create({
         data: {
           paymentNumber,
@@ -110,7 +131,7 @@ export async function createPayment(req: AuthRequest, res: Response, next: NextF
           amount: data.amount,
           transactionRef: data.transactionRef || null,
           narration: data.narration || null,
-          sessionId: data.sessionId ? BigInt(data.sessionId) : null,
+          sessionId,
           createdBy: req.user?.id,
           idempotencyKey: data.idempotencyKey,
           paymentStatus: 'completed',

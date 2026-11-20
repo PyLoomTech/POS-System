@@ -7,6 +7,7 @@ export interface Column<T> {
   cell: (row: T) => ReactNode
   className?: string
   align?: 'left' | 'right' | 'center'
+  sortKey?: string
 }
 
 interface DataTableProps<T> {
@@ -18,6 +19,9 @@ interface DataTableProps<T> {
   onRetry?: () => void
   emptyTitle?: string
   emptyDescription?: string
+  sortKey?: string
+  sortDirection?: 'asc' | 'desc'
+  onSort?: (key: string) => void
 }
 
 const ALIGN = {
@@ -35,6 +39,9 @@ export function DataTable<T>({
   onRetry,
   emptyTitle = 'No records found',
   emptyDescription,
+  sortKey,
+  sortDirection = 'asc',
+  onSort,
 }: DataTableProps<T>) {
   if (loading) return <Spinner />
   if (error) return <ErrorState message={error} onRetry={onRetry} />
@@ -54,8 +61,22 @@ export function DataTable<T>({
                   ALIGN[column.align ?? 'left'],
                   column.className,
                 )}
+                aria-sort={sortKey === column.sortKey
+                  ? sortDirection === 'asc' ? 'ascending' : 'descending'
+                  : undefined}
               >
-                {column.header}
+                {onSort && column.sortKey ? (
+                  <button
+                    type="button"
+                    className="font-inherit hover:text-ink"
+                    onClick={() => onSort(column.sortKey!)}
+                  >
+                    {column.header}
+                    {sortKey === column.sortKey && (
+                      <span className="ml-1 text-[10px]">{sortDirection === 'asc' ? '▲' : '▼'}</span>
+                    )}
+                  </button>
+                ) : column.header}
               </th>
             ))}
           </tr>

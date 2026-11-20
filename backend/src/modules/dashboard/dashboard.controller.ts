@@ -44,15 +44,17 @@ export async function getDashboardStats(_req: Request, res: Response, next: Next
         where: { status: 'confirmed', outstandingAmount: { gt: 0 } },
         _sum: { outstandingAmount: true },
       }),
-      prisma.$queryRaw<{ itemId: number; name: string; itemCode: string; quantity: number; revenue: number }[]>`
+      prisma.$queryRaw<{ itemId: number; name: string; itemCode: string; quantity: number; unit: string; revenue: number }[]>`
         SELECT i.id AS "itemId", i.name, i.item_code AS "itemCode",
-               SUM(sii.quantity)::float AS quantity,
+               SUM(sii.quantity * sii.conversion_factor)::float AS quantity,
+               COALESCE(NULLIF(u.abbreviation, ''), u.name) AS unit,
                SUM(sii.line_total)::float AS revenue
         FROM sales_invoice_items sii
         JOIN items i ON i.id = sii.item_id
+        JOIN units u ON u.id = i.unit_id
         JOIN sales_invoices si ON si.id = sii.invoice_id
         WHERE si.status = 'confirmed'
-        GROUP BY i.id, i.name, i.item_code
+        GROUP BY i.id, i.name, i.item_code, u.abbreviation, u.name
         ORDER BY quantity DESC, revenue DESC
         LIMIT 10
       `,
@@ -100,14 +102,16 @@ export async function getAnalytics(req: Request, res: Response, next: NextFuncti
       `,
       prisma.$queryRaw<any[]>`
         SELECT i.id AS "itemId", i.name,
-               SUM(sii.quantity)::float AS quantity,
+               SUM(sii.quantity * sii.conversion_factor)::float AS quantity,
+               COALESCE(NULLIF(u.abbreviation, ''), u.name) AS unit,
                SUM(sii.line_total)::float AS revenue
         FROM sales_invoice_items sii
         JOIN items i ON i.id = sii.item_id
+        JOIN units u ON u.id = i.unit_id
         JOIN sales_invoices si ON si.id = sii.invoice_id
         WHERE si.status = 'confirmed' AND si.invoice_date >= ${from}
-        GROUP BY i.id, i.name
-        ORDER BY revenue DESC
+        GROUP BY i.id, i.name, u.abbreviation, u.name
+        ORDER BY quantity DESC, revenue DESC
         LIMIT 10
       `,
       prisma.$queryRaw<any[]>`

@@ -8,12 +8,17 @@ interface UseFetchResult<T> {
   reload: () => void
 }
 
-export function useFetch<T>(url: string): UseFetchResult<T> {
+export function useFetch<T>(url: string, enabled = true): UseFetchResult<T> {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
+    if (!enabled) {
+      setLoading(false)
+      setError(null)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -24,7 +29,7 @@ export function useFetch<T>(url: string): UseFetchResult<T> {
     } finally {
       setLoading(false)
     }
-  }, [url])
+  }, [enabled, url])
 
   useEffect(() => {
     void reload()

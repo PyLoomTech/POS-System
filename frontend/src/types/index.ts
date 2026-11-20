@@ -118,6 +118,7 @@ export interface TopSellingItem {
   name: string
   itemCode: string
   quantity: number
+  unit: string
   revenue: number
 }
 
@@ -168,6 +169,7 @@ export interface SalesInvoiceLine {
   id: string | number
   itemId: number
   unitId?: number | null
+  priceListId?: number | null
   conversionFactor?: string
   quantity: string
   unitPrice: string
@@ -176,6 +178,7 @@ export interface SalesInvoiceLine {
   lineTotal: string
   item?: Item
   unit?: { id: number; name: string; abbreviation: string | null } | null
+  priceList?: { id: number; name: string } | null
 }
 
 export interface SalesInvoiceDetail {
@@ -191,7 +194,15 @@ export interface SalesInvoiceDetail {
   isCredit: boolean
   paymentMethod?: string | null
   notes: string | null
-  customer: { id: number; name: string } | null
+  emailNotificationStatus?: 'pending' | 'sent' | 'skipped' | 'not_configured' | 'failed'
+  emailSentAt?: string | null
+  emailNotificationError?: string | null
+  emailNotification?: {
+    status: 'sent' | 'skipped' | 'not_configured' | 'failed'
+    message: string
+    email?: string
+  }
+  customer: { id: number; name: string; email?: string | null } | null
   items: SalesInvoiceLine[]
 }
 

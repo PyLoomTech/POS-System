@@ -32,6 +32,7 @@ async function main() {
     ['sales','view'],['sales','create'],['sales','cancel'],['sales','return'],
     ['returns','view'],['returns','create'],
     ['payments','view'],['payments','create'],
+    ['shifts','view'],['shifts','open'],['shifts','close'],
     ['accounting','view'],['accounting','post'],['accounting','journal'],
     ['reports','view'],['reports','export'],
     ['settings','view'],['settings','edit'],
@@ -66,6 +67,7 @@ async function main() {
       'sales:view', 'sales:create', 'sales:cancel', 'sales:return',
       'returns:view', 'returns:create',
       'payments:view', 'payments:create',
+      'shifts:view', 'shifts:open', 'shifts:close',
       'accounting:view',
       'reports:view', 'reports:export',
       'settings:view',
@@ -78,6 +80,7 @@ async function main() {
       'sales:view', 'sales:create', 'sales:return',
       'returns:view',
       'payments:view', 'payments:create',
+      'shifts:view', 'shifts:open', 'shifts:close',
     ],
     // Books plus stock oversight: ledger, journal, VAT, reports and inventory.
     Accountant: [
@@ -87,6 +90,7 @@ async function main() {
       'inventory:view', 'inventory:create', 'inventory:approve',
       'sales:view', 'purchases:view', 'returns:view',
       'payments:view', 'payments:create',
+      'shifts:view',
       'accounting:view', 'accounting:post', 'accounting:journal',
       'reports:view', 'reports:export',
     ],

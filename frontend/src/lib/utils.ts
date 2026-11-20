@@ -23,6 +23,21 @@ export function formatNumber(value: unknown, digits = 0): string {
   })
 }
 
+export function getPriceListDisplayName(
+  priceListName?: string | null,
+  unitName?: string | null,
+): string | null {
+  const name = priceListName?.trim()
+  if (!name || name.toLowerCase() === 'wholesale') return null
+  if (
+    name.toLowerCase() === 'default price list' &&
+    !/(carton|box)/i.test(unitName ?? '')
+  ) {
+    return null
+  }
+  return name
+}
+
 export function formatDate(value?: string | Date | null): string {
   if (!value) return '—'
   const date = new Date(value)

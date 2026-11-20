@@ -2,6 +2,7 @@ import {
   BarChart3,
   Boxes,
   Calculator,
+  Clock3,
   FolderTree,
   LayoutDashboard,
   Package,
@@ -71,6 +72,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Money',
     items: [
       { label: 'Payments', path: '/payments', icon: Wallet, permission: 'payments:view' },
+      { label: 'Cashier Shifts', path: '/shifts', icon: Clock3, permission: 'shifts:view' },
       { label: 'Accounting', path: '/accounting', icon: Calculator, permission: 'accounting:view' },
       { label: 'Reports', path: '/reports', icon: BarChart3, permission: 'reports:view' },
     ],

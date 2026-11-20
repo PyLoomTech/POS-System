@@ -7,22 +7,23 @@ import { titleForPath } from './nav'
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const location = useLocation()
   const title = titleForPath(location.pathname)
-
-  // On the till the rail collapses to icons so the bill gets the full width.
-  const collapsed = location.pathname === '/pos'
 
   return (
     <div className="min-h-full">
       <Sidebar
         open={sidebarOpen}
-        collapsed={collapsed}
         onNavigate={() => setSidebarOpen(false)}
+        onExpandedChange={setSidebarExpanded}
       />
-      <div className={cn(collapsed ? 'lg:pl-[66px]' : 'lg:pl-56')}>
+      <div className={cn(
+        'transition-[padding] duration-200 ease-out',
+        sidebarExpanded ? 'lg:pl-56' : 'lg:pl-[66px]',
+      )}>
         <Header title={title} onMenuClick={() => setSidebarOpen((open) => !open)} />
-        <main className={cn('px-4 py-5 sm:px-6 lg:px-8 lg:py-7', collapsed && 'lg:px-4 lg:py-4')}>
+        <main className={cn('px-4 py-5 sm:px-6 lg:px-8 lg:py-7', location.pathname === '/pos' && 'lg:px-4 lg:py-4')}>
           <Outlet />
         </main>
       </div>

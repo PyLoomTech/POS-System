@@ -6,10 +6,48 @@ import { createError } from '../../middleware/errorHandler';
 import { AuthRequest } from '../../middleware/auth';
 import { getNextNumber } from '../../utils/numbering';
 import { calculateLineTax, calculateInvoiceTotals } from '../../utils/tax';
+import { sendSalesInvoiceEmail } from './salesEmail.service';
+
+async function deliverSalesInvoiceEmail(invoiceId: bigint) {
+  const invoice = await prisma.salesInvoice.findUnique({
+    where: { id: invoiceId },
+    include: { customer: true, items: { include: { item: true, unit: true, priceList: true } } },
+  });
+  if (!invoice) throw createError('Invoice not found.', 404);
+  if (invoice.status !== 'confirmed') {
+    throw createError('Only confirmed invoices can be emailed.', 409);
+  }
+
+  const company = await prisma.companySettings.findFirst();
+  let notification;
+  try {
+    notification = await sendSalesInvoiceEmail(invoice, company);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Unknown mail delivery error.';
+    console.error(`Invoice email delivery failed for ${invoice.invoiceNumber}: ${detail}`);
+    notification = {
+      status: 'failed' as const,
+      message: 'Invoice saved, but the email could not be delivered. Check backend SMTP settings and logs.',
+      email: invoice.customer.email ?? undefined,
+    };
+  }
+
+  await prisma.salesInvoice.update({
+    where: { id: invoice.id },
+    data: {
+      emailNotificationStatus: notification.status,
+      emailNotificationError: notification.status === 'sent' ? null : notification.message,
+      ...(notification.status === 'sent' ? { emailSentAt: new Date() } : {}),
+    },
+  });
+
+  return notification;
+}
 
 const lineItemSchema = z.object({
   itemId: z.number().int().positive(),
   unitId: z.number().int().positive().optional(),
+  priceListId: z.number().int().positive().nullable().optional(),
   quantity: z.number().positive(),
   unitPrice: z.number().min(0),
   discountPct: z.number().min(0).max(100).default(0),
@@ -31,7 +69,7 @@ const createInvoiceSchema = z.object({
   isCredit: z.boolean().default(false),
   dueDate: z.string().optional().nullable(),
   notes: z.string().optional(),
-  sessionId: z.number().optional().nullable(),
+  sessionId: z.number().int().positive(),
   idempotencyKey: z.string().optional(),
   items: z.array(lineItemSchema).min(1),
   payments: z.array(paymentSchema).optional().default([]),
@@ -53,6 +91,17 @@ export async function createSalesInvoice(req: AuthRequest, res: Response, next: 
     const invoiceNumber = await getNextNumber('SALES_INV');
 
     const result = await prisma.$transaction(async (tx) => {
+      const activeShift = await tx.$queryRaw<Array<{ id: bigint }>>`
+        SELECT id FROM cash_drawer_sessions
+        WHERE id = ${BigInt(data.sessionId)}
+          AND cashier_id = ${req.user!.id}
+          AND status = 'open'
+        FOR UPDATE
+      `;
+      if (activeShift.length === 0) {
+        throw createError('Open a shift before completing a sale. The selected shift is not active for this cashier.', 409);
+      }
+
       // Fetch items with stock (with row-level advisory locks per item)
       const lineResults = [];
       let totalPaid = new Decimal(0);
@@ -60,9 +109,15 @@ export async function createSalesInvoice(req: AuthRequest, res: Response, next: 
       for (const li of data.items) {
         const item = await tx.item.findUnique({
           where: { id: li.itemId },
-          include: { unitConversions: true },
+          include: { unitConversions: true, priceListPrices: true },
         });
         if (!item) throw createError(`Item ID ${li.itemId} not found.`, 404);
+        if (
+          li.priceListId != null &&
+          !item.priceListPrices.some((price) => price.priceListId === li.priceListId)
+        ) {
+          throw createError(`Price list is not configured for '${item.name}'.`, 400);
+        }
 
         const unitId = li.unitId ?? item.unitId;
         const conversionFactor = unitId === item.unitId
@@ -169,6 +224,7 @@ export async function createSalesInvoice(req: AuthRequest, res: Response, next: 
             invoiceId: invoice.id,
             itemId: li.itemId,
             unitId,
+            priceListId: li.priceListId ?? null,
             conversionFactor,
             quantity: li.quantity,
             unitPrice: li.unitPrice,
@@ -239,10 +295,36 @@ export async function createSalesInvoice(req: AuthRequest, res: Response, next: 
 
     const full = await prisma.salesInvoice.findUnique({
       where: { id: result.id },
-      include: { items: { include: { item: true, unit: true } }, customer: true },
+      include: { items: { include: { item: true, unit: true, priceList: true } }, customer: true },
     });
+    if (!full) throw createError('Invoice was created but could not be reloaded.', 500);
 
-    return res.status(201).json(full);
+    const emailNotification = await deliverSalesInvoiceEmail(full.id);
+    const emailStatus = await prisma.salesInvoice.findUniqueOrThrow({
+      where: { id: full.id },
+      select: {
+        emailNotificationStatus: true,
+        emailSentAt: true,
+        emailNotificationError: true,
+      },
+    });
+    return res.status(201).json({ ...full, ...emailStatus, emailNotification });
+  } catch (err) { return next(err); }
+}
+
+export async function resendSalesInvoiceEmail(req: Request, res: Response, next: NextFunction) {
+  try {
+    const id = BigInt(String(req.params.id));
+    const emailNotification = await deliverSalesInvoiceEmail(id);
+    const invoice = await prisma.salesInvoice.findUniqueOrThrow({
+      where: { id },
+      select: {
+        emailNotificationStatus: true,
+        emailSentAt: true,
+        emailNotificationError: true,
+      },
+    });
+    return res.json({ ...invoice, emailNotification });
   } catch (err) { return next(err); }
 }
 
@@ -343,7 +425,7 @@ export async function getSalesInvoice(req: Request, res: Response, next: NextFun
       include: {
         customer: true,
         cashier: { select: { id: true, fullName: true } },
-        items: { include: { item: { include: { unit: true } }, unit: true } },
+        items: { include: { item: { include: { unit: true } }, unit: true, priceList: true } },
         paymentAllocations: {
           include: { payment: { select: { paymentMethod: true, amount: true, paymentNumber: true, paymentDate: true } } },
         },

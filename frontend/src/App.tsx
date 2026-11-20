@@ -19,6 +19,7 @@ import { PurchasesPage } from '@/pages/PurchasesPage'
 import { AccountingPage } from '@/pages/AccountingPage'
 import { ReportsPage } from '@/pages/ReportsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { ShiftsPage } from '@/pages/ShiftsPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 function App() {
@@ -33,6 +34,7 @@ function App() {
           <Route path="sales" element={<SalesPage />} />
           <Route path="returns" element={<ReturnsPage />} />
           <Route path="payments" element={<PaymentsPage />} />
+          <Route path="shifts" element={<ShiftsPage />} />
           <Route path="customers" element={<CustomersPage />} />
           <Route path="suppliers" element={<SuppliersPage />} />
           <Route path="items" element={<ItemsPage />} />
